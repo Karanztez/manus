@@ -63,6 +63,7 @@ class MT5Connector:
         self.magic_number = magic_number
         self.connected = False
         self.simulated_positions = []
+        self.simulated_deals = []
         self._last_price = 2650.0
 
     def connect(self) -> bool:
@@ -325,3 +326,21 @@ class MT5Connector:
         else:
             logger.error(f"[MODIFY_FAILED] Ticket #{ticket} failed: {res.comment}")
             return False
+
+    def get_history_deals(self, hours: int = 24) -> list:
+        """Retrieves closed deals from account history for tracking PnL and consecutive losses."""
+        if not HAS_MT5:
+            return getattr(self, "simulated_deals", [])
+
+        try:
+            from datetime import datetime, timedelta
+            now = datetime.now()
+            from_time = now - timedelta(hours=hours)
+            deals = mt5.history_deals_get(from_time, now)
+            if deals is None:
+                return []
+            return [d for d in deals if getattr(d, "magic", 0) == self.magic_number and getattr(d, "entry", 0) == mt5.DEAL_ENTRY_OUT]
+        except Exception as e:
+            logger.warning(f"Error fetching history deals: {e}")
+            return []
+

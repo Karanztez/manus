@@ -27,9 +27,9 @@ class OrderManager:
         pos_type = "BUY" if pos.type == 0 else "SELL"
         return f"{pos_type} #{pos.ticket} (Open: {pos.price_open}, Profit: {pos.profit})"
 
-    def handle_signal(self, symbol: str, signal: TradeSignal, min_confidence: float) -> bool:
+    def handle_signal(self, symbol: str, signal: TradeSignal, min_confidence: float, macro_bias: str = "") -> bool:
         """
-        Processes a trade signal through risk verification and order execution.
+        Processes a trade signal through comprehensive risk verification and order execution.
         """
         if signal.confidence < min_confidence:
             logger.info(f"Signal confidence {signal.confidence:.2f} < threshold {min_confidence}. Skipping.")
@@ -42,8 +42,10 @@ class OrderManager:
             # Only close if high conviction reversal signal (confidence >= 0.90) AND position is actually in profit or at hard invalidation.
             if open_positions and signal.confidence >= 0.90:
                 pos = open_positions[0]
-                if pos.profit > 0:
+                profit = getattr(pos, "profit", 0.0)
+                if profit > 0:
                     logger.info(f"[PROFIT_TAKE] Closing profitable position for {symbol} based on high-conviction AI signal ({signal.confidence:.2f}).")
+                    self.risk.record_manual_win()
                     self.mt5.close_positions(symbol)
                     return True
             logger.info(f"[HOLD_PROTECTION] Ignoring premature CLOSE signal ({signal.confidence:.2f}). Letting predefined SL/TP and Trailing Stop manage the position.")
@@ -52,40 +54,63 @@ class OrderManager:
         if signal.action in ["BUY", "SELL"]:
             # Check if there is already a position in the same direction
             target_type = 0 if signal.action == "BUY" else 1
-            has_same_direction = any(p.type == target_type for p in open_positions)
+            has_same_direction = any(getattr(p, "type", -1) == target_type for p in open_positions)
 
             if has_same_direction:
                 logger.info(f"Position for {signal.action} already open on {symbol}. No duplicate entry.")
                 return False
 
-            # If opposite position exists, close it first
-            if open_positions:
-                logger.info(f"Reversal detected. Closing existing opposite position before entering {signal.action}.")
-                self.mt5.close_positions(symbol)
+            # Enforce minimum SL distance to protect against M1 market noise
+            sl_points = self.risk.enforce_min_sl(signal.sl_points)
+            tp_points = signal.tp_points
+            if sl_points > signal.sl_points and signal.sl_points > 0:
+                # Maintain min RR ratio if SL was widened
+                tp_points = max(tp_points, round(sl_points * self.risk.min_rr_ratio, 2))
 
-            # Risk & RR validation
-            if not self.risk.validate_rr_ratio(signal.sl_points, signal.tp_points):
-                logger.warning("Trade rejected due to poor Risk/Reward ratio.")
+            # Master Risk Validation Gate
+            can_open, reason = self.risk.can_open_trade(
+                symbol=symbol,
+                action=signal.action,
+                sl_points=sl_points,
+                tp_points=tp_points,
+                macro_bias=macro_bias
+            )
+            if not can_open:
+                logger.warning(f"[ORDER_REJECTED_BY_RISK] {reason}")
                 return False
 
-            lot = self.risk.calculate_lot(symbol, signal.sl_points)
-            logger.info(f"[EXECUTE] {signal.action} {lot} lots on {symbol} (SL: {signal.sl_points}, TP: {signal.tp_points})")
+            # If opposite position exists, close it first and record its outcome
+            if open_positions:
+                pos = open_positions[0]
+                profit = getattr(pos, "profit", 0.0)
+                if profit < 0:
+                    self.risk.record_manual_loss(profit)
+                else:
+                    self.risk.record_manual_win()
+                logger.info(f"Reversal detected. Closing existing opposite position (P/L: {profit:.2f}) before entering {signal.action}.")
+                self.mt5.close_positions(symbol)
+
+            lot = self.risk.calculate_lot(symbol, sl_points)
+            logger.info(f"[EXECUTE] {signal.action} {lot} lots on {symbol} (SL: {sl_points:.2f}, TP: {tp_points:.2f})")
             
-            return self.mt5.open_trade(
+            success = self.mt5.open_trade(
                 symbol=symbol,
                 action=signal.action,
                 volume=lot,
-                sl_points=signal.sl_points,
-                tp_points=signal.tp_points,
+                sl_points=sl_points,
+                tp_points=tp_points,
                 comment=f"Gemini {signal.confidence:.2f}"
             )
+            if success:
+                self.risk.record_trade_opened()
+            return success
 
         return False
 
-    def manage_trailing_and_breakeven(self, symbol: str, be_trigger_points: float = 100.0, trailing_step_points: float = 50.0):
+    def manage_trailing_and_breakeven(self, symbol: str, be_trigger_points: float = 3.5, trailing_step_points: float = 2.0):
         """
-        Automated Risk Management:
-        1. Break-Even: Move SL to entry price once in profit >= be_trigger_points.
+        Automated Risk Management for M1 Scalping:
+        1. Break-Even: Move SL to entry price once in profit >= be_trigger_points (e.g. +$3.5 in Gold).
         2. Trailing Stop: Stepwise trailing of Stop Loss to lock in profits as market advances.
         """
         positions = self.get_open_positions(symbol)
@@ -110,9 +135,9 @@ class OrderManager:
 
             if pos_type == 0:  # BUY
                 profit_points = cur_price - price_open
-                # 1. Break-Even Check
-                if profit_points >= be_trigger_points and cur_sl < price_open:
-                    new_sl = round(price_open + 5.0, 2)  # Entry + small buffer
+                # 1. Break-Even Check: lock entry + $0.30 buffer
+                if profit_points >= be_trigger_points and (cur_sl < price_open or cur_sl == 0.0):
+                    new_sl = round(price_open + 0.30, 2)
                     logger.info(f"[BREAK_EVEN] Moving SL to Breakeven for BUY #{ticket} ({new_sl})")
                     self.mt5.modify_position(ticket, sl=new_sl, tp=cur_tp)
 
@@ -125,9 +150,9 @@ class OrderManager:
 
             elif pos_type == 1:  # SELL
                 profit_points = price_open - cur_price
-                # 1. Break-Even Check
-                if profit_points >= be_trigger_points and (cur_sl == 0.0 or cur_sl > price_open):
-                    new_sl = round(price_open - 5.0, 2)  # Entry - small buffer
+                # 1. Break-Even Check: lock entry - $0.30 buffer
+                if profit_points >= be_trigger_points and (cur_sl > price_open or cur_sl == 0.0):
+                    new_sl = round(price_open - 0.30, 2)
                     logger.info(f"[BREAK_EVEN] Moving SL to Breakeven for SELL #{ticket} ({new_sl})")
                     self.mt5.modify_position(ticket, sl=new_sl, tp=cur_tp)
 
@@ -137,3 +162,4 @@ class OrderManager:
                     if cur_sl == 0.0 or ideal_sl < cur_sl:
                         logger.info(f"[TRAILING_STOP] Stepping SL for SELL #{ticket} to {ideal_sl}")
                         self.mt5.modify_position(ticket, sl=ideal_sl, tp=cur_tp)
+

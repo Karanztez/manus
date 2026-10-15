@@ -147,8 +147,13 @@ Guidelines:
    - Trend continuation: Higher timeframes (M5/M15) are Bearish + M1 rally into Resistance/EMA.
    - Reversal top / Fakeout: Sharp rejection wick at Resistance/R1 (e.g. Shooting Star / Bearish Engulfing after a strong rally) or Overbought RSI (>65) breaking below EMA 9.
 4. If market is completely flat and compressed with zero momentum, choose 'HOLD'.
-4. Calculate sl_points realistically using ATR (1.2x - 1.8x ATR) or recent swing high/low.
-5. Set tp_points such that tp_points / sl_points >= 1.5 (Risk to Reward >= 1.5).
+5. Calculate sl_points realistically using ATR (1.5x - 2.0x ATR) or swing structure. For Gold on M1, SL MUST be >= 6.0 points to clear market spread and 1-minute candle noise.
+6. Set tp_points such that tp_points / sl_points >= 1.5 (Risk to Reward >= 1.5).
+7. M1 Scalping Discipline (CRITICAL):
+   - NEVER chase an extended green impulse candle at the high of the day/range (Do not BUY tops).
+   - NEVER chase an extended red impulse candle at the low of the day/range (Do not SELL bottoms).
+   - Enter only on confirmed Pullbacks into Dynamic EMA (9/21) or Rejection Wick / Pinbar candle closes at Support/Resistance.
+   - In choppy, range-bound whipsaws or breaking news, choose 'HOLD'.
 """
 
         max_attempts = len(self.api_keys)

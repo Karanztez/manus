@@ -53,6 +53,28 @@ class WebTools:
             logger.warning(f"[WEB_SEARCH_WARN] Failed to fetch news: {e}")
             return f"[INFO] Normal market conditions. Unable to fetch online headlines ({e})."
 
+    @staticmethod
+    def detect_high_impact_news(news_text: str) -> tuple:
+        """
+        Analyzes news snippet string for red-folder high-impact keywords
+        such as CPI, PPI, Retail Sales, Non-Farm, FOMC, Fed Rate, Powell, etc.
+        """
+        if not news_text or "[INFO]" in news_text:
+            return False, ""
+
+        keywords = [
+            "CPI", "PPI", "RETAIL SALES", "NON-FARM", "NFP",
+            "FOMC", "FED RATE", "INTEREST RATE DECISION",
+            "POWELL", "INFLATION SURGE", "RATE HIKE", "RATE CUT",
+            "BREAKING NEWS"
+        ]
+        upper_text = news_text.upper()
+        found = [kw for kw in keywords if kw in upper_text]
+        if found:
+            return True, f"High-Impact Macro Event Detected: {', '.join(found)}"
+        return False, ""
+
+
 # =====================================================================
 # 2. Math & Quant Calculator Tool
 # =====================================================================

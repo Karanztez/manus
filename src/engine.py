@@ -28,7 +28,13 @@ class TradingEngine:
             risk_percent=config.risk.risk_percent,
             fixed_lot=config.risk.fixed_lot,
             max_spread_points=config.risk.max_spread_points,
-            min_rr_ratio=config.risk.min_rr_ratio
+            min_rr_ratio=config.risk.min_rr_ratio,
+            consecutive_loss_limit=config.risk.consecutive_loss_limit,
+            loss_cooldown_minutes=config.risk.loss_cooldown_minutes,
+            max_daily_drawdown_percent=config.risk.max_daily_drawdown_percent,
+            max_trades_per_hour=config.risk.max_trades_per_hour,
+            min_sl_points=config.risk.min_sl_points,
+            news_protection_enabled=config.risk.news_protection_enabled
         )
         self.order_manager = OrderManager(
             mt5_connector=self.mt5,
@@ -51,6 +57,27 @@ class TradingEngine:
 
         try:
             while self.is_running:
+                # 1. Manage Active Positions (Continuous Trailing Stop & Break-Even tuned for M1)
+                self.order_manager.manage_trailing_and_breakeven(symbol, be_trigger_points=3.5, trailing_step_points=2.0)
+
+                # 2. Risk Circuit Breakers & Cooldown Gate
+                self.risk_manager.sync_deals_and_update_state()
+                dd_ok, dd_msg = self.risk_manager.check_daily_drawdown()
+                if not dd_ok:
+                    time.sleep(10)
+                    continue
+
+                cooldown_ok, cooldown_msg = self.risk_manager.check_loss_cooldown()
+                if not cooldown_ok:
+                    time.sleep(5)
+                    continue
+
+                hourly_ok, hourly_msg = self.risk_manager.check_hourly_trade_limit()
+                if not hourly_ok:
+                    time.sleep(10)
+                    continue
+
+                # 3. Fetch Rates
                 df = self.mt5.get_rates(symbol, timeframe, count=self.config.trading.history_bars)
                 if df is None or len(df) < 30:
                     time.sleep(10)
@@ -59,32 +86,34 @@ class TradingEngine:
                 current_candle_time = df['time'].iloc[-1]
                 is_new_candle = (current_candle_time != last_candle_time)
 
-                # Local Fast Scanner (Checks every loop: Breakouts, Volatility Spikes, Key Levels)
+                # Local Scanner: Disciplined M1 Triggers (No blind momentum chasing)
                 local_trigger_reason = None
                 latest_close = float(df['close'].iloc[-1])
                 prev_close = float(df['close'].iloc[-2])
                 price_delta = abs(latest_close - prev_close)
 
-                # 1. New Candle Trigger
+                # 3.1. New Candle Trigger (Safest for M1: complete wicks, fixed OHLC)
                 if is_new_candle:
                     last_candle_time = current_candle_time
                     local_trigger_reason = f"New Candle ({current_candle_time})"
                 
-                # 2. Real-time Spike Trigger (Price moves >= 35 points in a single pulse)
+                # 3.2. Real-time Climax Spike Alert (Do NOT buy top / sell bottom)
                 elif price_delta >= 35.0:
-                    local_trigger_reason = f"Momentum Spike ({price_delta:.1f} pts change)"
+                    # In M1, sudden 35pt pulse is an exhaustion move. Wait for candle close / pullback.
+                    if not hasattr(self, '_last_spike_alert') or (time.time() - self._last_spike_alert > 60):
+                        self._last_spike_alert = time.time()
+                        logger.info(f"[CLIMAX_SPIKE] Rapid pulse ({price_delta:.1f} pts). Awaiting candle close confirmation to prevent buying top/selling bottom.")
 
-                # 3. Key Pivot Breakout Trigger
+                # 3.3. Key Pivot Boundary Test (R1 / S1 mean-reversion test)
                 last_completed = df.iloc[-2]
                 from .tools import MathTools, WebTools, ChartTools
                 pivots = MathTools.calculate_pivot_points(float(last_completed['high']), float(last_completed['low']), float(last_completed['close']))
                 if not is_new_candle and (latest_close >= pivots['r1'] or latest_close <= pivots['s1']):
-                    # Cooldown mechanism: only trigger once per 15s for pivot test
-                    if not hasattr(self, '_last_pivot_alert') or (time.time() - self._last_pivot_alert > 20):
+                    if not hasattr(self, '_last_pivot_alert') or (time.time() - self._last_pivot_alert > 30):
                         self._last_pivot_alert = time.time()
                         local_trigger_reason = f"Testing Pivot Boundary (R1={pivots['r1']}, S1={pivots['s1']})"
 
-                # If trigger detected, dispatch to Gemini AI
+                # 4. If trigger detected, dispatch to Gemini AI
                 if local_trigger_reason:
                     logger.info(f"[LOCAL_SCANNER_TRIGGER] Reason: {local_trigger_reason} | Price: {latest_close}")
 
@@ -92,6 +121,15 @@ class TradingEngine:
                     if not self.risk_manager.is_spread_safe(symbol):
                         time.sleep(2)
                         continue
+
+                    # News Shield: Check high-impact news before dispatching
+                    web_news = WebTools.search_news(f"{symbol} gold price market news", max_results=2)
+                    if self.config.risk.news_protection_enabled:
+                        has_news, news_desc = WebTools.detect_high_impact_news(web_news)
+                        if has_news:
+                            logger.warning(f"[NEWS_SHIELD_ACTIVE] {news_desc}. Pausing trade entry to avoid whipsaw.")
+                            time.sleep(10)
+                            continue
 
                     # Extract Indicators & Math Tools
                     features = extract_market_features(df)
@@ -103,11 +141,10 @@ class TradingEngine:
                     features['multi_timeframe_alignment'] = mtf_data
                     logger.info(f"[MULTI_TF_SCAN] Macro Bias: {mtf_data['macro_bias']}")
 
-                    # Tools: Spatial Chart Matrix & Web News
+                    # Spatial Chart Matrix
                     chart_visual = ChartTools.render_ascii_chart(df, width=35, height=8)
-                    web_news = WebTools.search_news(f"{symbol} gold price market news", max_results=2)
 
-                    # Tools: Capture Real HD Screenshot from MT5
+                    # Capture Real HD Screenshot from MT5
                     import os
                     screenshot_file = os.path.join(os.getcwd(), f"chart_{symbol}_{timeframe}.png")
                     has_screenshot = self.mt5.save_chart_screenshot(symbol, timeframe, screenshot_file, width=800, height=450)
@@ -127,10 +164,12 @@ class TradingEngine:
                         image_path=active_img_path
                     )
                     if signal:
-                        self.order_manager.handle_signal(symbol, signal, self.config.trading.min_confidence)
-
-                # Continuous Trailing Stop & Break-Even Evaluation (runs every 2 seconds)
-                self.order_manager.manage_trailing_and_breakeven(symbol, be_trigger_points=60.0, trailing_step_points=30.0)
+                        self.order_manager.handle_signal(
+                            symbol=symbol,
+                            signal=signal,
+                            min_confidence=self.config.trading.min_confidence,
+                            macro_bias=mtf_data['macro_bias']
+                        )
 
                 # High-speed local loop tick (2 seconds)
                 time.sleep(2)

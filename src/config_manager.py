@@ -27,6 +27,12 @@ class RiskConfig:
     fixed_lot: float
     max_spread_points: float
     min_rr_ratio: float
+    consecutive_loss_limit: int = 2
+    loss_cooldown_minutes: int = 10
+    max_daily_drawdown_percent: float = 3.0
+    max_trades_per_hour: int = 4
+    min_sl_points: float = 6.0
+    news_protection_enabled: bool = True
 
 @dataclass
 class MT5Config:
@@ -77,7 +83,13 @@ class ConfigManager:
             risk_percent=parser.getfloat("risk", "risk_percent", fallback=1.0),
             fixed_lot=parser.getfloat("risk", "fixed_lot", fallback=0.01),
             max_spread_points=parser.getfloat("risk", "max_spread_points", fallback=50.0),
-            min_rr_ratio=parser.getfloat("risk", "min_rr_ratio", fallback=1.5)
+            min_rr_ratio=parser.getfloat("risk", "min_rr_ratio", fallback=1.5),
+            consecutive_loss_limit=parser.getint("risk", "consecutive_loss_limit", fallback=2),
+            loss_cooldown_minutes=parser.getint("risk", "loss_cooldown_minutes", fallback=10),
+            max_daily_drawdown_percent=parser.getfloat("risk", "max_daily_drawdown_percent", fallback=3.0),
+            max_trades_per_hour=parser.getint("risk", "max_trades_per_hour", fallback=4),
+            min_sl_points=parser.getfloat("risk", "min_sl_points", fallback=6.0),
+            news_protection_enabled=parser.getboolean("risk", "news_protection_enabled", fallback=True)
         )
 
         mt5_cfg = MT5Config(
