@@ -136,13 +136,17 @@ Analyze the current market condition and provide trading decision for:
 {json.dumps(market_data, indent=2)}
 
 Guidelines:
-1. BUY Symmetrical Edge:
-   - Trend continuation: EMA Bullish alignment (9 > 21) with price pulling back to Support/EMA.
-   - Reversal bounce: Sharp rejection wick at Support or Oversold RSI (<35) rebounding up.
-2. SELL Symmetrical Edge (Short Selling / Mean-Reversion):
-   - Trend continuation: EMA Bearish alignment (9 < 21) with price rallying into Resistance/EMA.
-   - Reversal top / Fakeout: Sharp rejection wick at Resistance (e.g. Shooting Star / Bearish Engulfing after a strong rally) or Overbought RSI (>65) breaking below EMA 9.
-3. If market is completely flat and compressed with zero momentum, choose 'HOLD'.
+1. Multi-Timeframe Confluence Rule (CRITICAL):
+   - Check 'multi_timeframe_alignment' in technical data (M1, M5, M15, H1).
+   - If macro bias is CONFLICTED / MIXED, be extremely conservative and prefer 'HOLD'.
+   - NEVER BUY if M15 and H1 are strongly BEARISH, and NEVER SELL if M15 and H1 are strongly BULLISH (unless there is a massive reversal rejection wick at key Pivot levels).
+2. BUY Symmetrical Edge:
+   - Trend continuation: Higher timeframes (M5/M15) are Bullish + M1 pullback to Support/EMA.
+   - Reversal bounce: Sharp rejection wick at major Support/S1 or Oversold RSI (<35) rebounding up.
+3. SELL Symmetrical Edge (Short Selling / Mean-Reversion):
+   - Trend continuation: Higher timeframes (M5/M15) are Bearish + M1 rally into Resistance/EMA.
+   - Reversal top / Fakeout: Sharp rejection wick at Resistance/R1 (e.g. Shooting Star / Bearish Engulfing after a strong rally) or Overbought RSI (>65) breaking below EMA 9.
+4. If market is completely flat and compressed with zero momentum, choose 'HOLD'.
 4. Calculate sl_points realistically using ATR (1.2x - 1.8x ATR) or recent swing high/low.
 5. Set tp_points such that tp_points / sl_points >= 1.5 (Risk to Reward >= 1.5).
 """

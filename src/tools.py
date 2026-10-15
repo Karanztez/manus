@@ -155,3 +155,57 @@ class ChartTools:
 
         chart_lines.append("         +" + "-" * len(recent))
         return "\n".join(chart_lines)
+
+# =====================================================================
+# 4. Multi-Timeframe Confluence Scanner (M1, M5, M15, H1)
+# =====================================================================
+class MultiTimeframeScanner:
+    """Fetches and aligns macro trends across M1, M5, M15, and H1 to prevent whipsaw."""
+
+    @staticmethod
+    def get_multi_tf_confluence(mt5_connector, symbol: str) -> Dict[str, Any]:
+        """
+        Scans M1, M5, M15, and H1 timeframes in parallel from local MT5.
+        Returns trend direction, EMA alignment, and RSI for each timeframe.
+        """
+        from .analysis.indicators import calculate_ema, calculate_rsi
+        results = {}
+
+        tfs = ["M1", "M5", "M15", "H1"]
+        for tf in tfs:
+            try:
+                df = mt5_connector.get_rates(symbol, tf, count=35)
+                if df is not None and len(df) >= 25:
+                    ema9 = float(calculate_ema(df['close'], 9).iloc[-1])
+                    ema21 = float(calculate_ema(df['close'], 21).iloc[-1])
+                    rsi = float(calculate_rsi(df['close'], 14).iloc[-1])
+                    cur = float(df['close'].iloc[-1])
+
+                    bias = "BULLISH" if cur > ema9 > ema21 else ("BEARISH" if cur < ema9 < ema21 else "SIDEWAYS")
+                    results[tf] = {
+                        "trend": bias,
+                        "close": round(cur, 2),
+                        "ema_9": round(ema9, 2),
+                        "ema_21": round(ema21, 2),
+                        "rsi": round(rsi, 2)
+                    }
+                else:
+                    results[tf] = {"trend": "UNKNOWN", "rsi": 50.0}
+            except Exception as e:
+                results[tf] = {"trend": "ERROR", "rsi": 50.0}
+
+        # Calculate macro alignment score
+        bullish_count = sum(1 for v in results.values() if v.get("trend") == "BULLISH")
+        bearish_count = sum(1 for v in results.values() if v.get("trend") == "BEARISH")
+
+        if bullish_count >= 3:
+            macro_bias = "STRONG_BULLISH (Safe to BUY dips)"
+        elif bearish_count >= 3:
+            macro_bias = "STRONG_BEARISH (Safe to SHORT rallies)"
+        else:
+            macro_bias = "CONFLICTED / MIXED (High risk of whipsaw)"
+
+        return {
+            "macro_bias": macro_bias,
+            "details": results
+        }

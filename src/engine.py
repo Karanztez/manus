@@ -97,6 +97,12 @@ class TradingEngine:
                     features = extract_market_features(df)
                     features['pivot_points'] = pivots
 
+                    # Multi-Timeframe Confluence Tool (M1, M5, M15, H1)
+                    from .tools import MultiTimeframeScanner
+                    mtf_data = MultiTimeframeScanner.get_multi_tf_confluence(self.mt5, symbol)
+                    features['multi_timeframe_alignment'] = mtf_data
+                    logger.info(f"[MULTI_TF_SCAN] Macro Bias: {mtf_data['macro_bias']}")
+
                     # Tools: Spatial Chart Matrix & Web News
                     chart_visual = ChartTools.render_ascii_chart(df, width=35, height=8)
                     web_news = WebTools.search_news(f"{symbol} gold price market news", max_results=2)
