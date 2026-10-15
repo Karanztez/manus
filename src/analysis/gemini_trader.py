@@ -5,6 +5,7 @@ Uses the official google-genai SDK to analyze market structures and return
 validated JSON decisions with Pydantic structured output.
 """
 
+import os
 import json
 import logging
 from typing import Literal, Optional, List
