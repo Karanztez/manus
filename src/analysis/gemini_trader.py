@@ -135,11 +135,27 @@ Guidelines:
                 if HAS_PYDANTIC:
                     gen_config["response_schema"] = TradeSignal
 
-                response = self.client.models.generate_content(
-                    model=self.model_name,
-                    contents=prompt,
-                    config=types.GenerateContentConfig(**gen_config),
-                )
+                models_to_try = [self.model_name, "gemini-2.5-flash", "gemini-1.5-flash"]
+                last_exc = None
+                response = None
+                for m in models_to_try:
+                    try:
+                        response = self.client.models.generate_content(
+                            model=m,
+                            contents=prompt,
+                            config=types.GenerateContentConfig(**gen_config),
+                        )
+                        break
+                    except Exception as err:
+                        last_exc = err
+                        if "503" in str(err) or "UNAVAILABLE" in str(err):
+                            continue
+                        raise err
+
+                if response is None:
+                    if last_exc:
+                        raise last_exc
+                    raise RuntimeError("No response from Gemini API models.")
                 
                 if HAS_PYDANTIC:
                     signal = TradeSignal.model_validate_json(response.text)
