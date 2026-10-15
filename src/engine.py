@@ -57,28 +57,49 @@ class TradingEngine:
                     continue
 
                 current_candle_time = df['time'].iloc[-1]
+                is_new_candle = (current_candle_time != last_candle_time)
 
-                if current_candle_time != last_candle_time:
+                # Local Fast Scanner (Checks every loop: Breakouts, Volatility Spikes, Key Levels)
+                local_trigger_reason = None
+                latest_close = float(df['close'].iloc[-1])
+                prev_close = float(df['close'].iloc[-2])
+                price_delta = abs(latest_close - prev_close)
+
+                # 1. New Candle Trigger
+                if is_new_candle:
                     last_candle_time = current_candle_time
-                    logger.info(f"[NEW_CANDLE] Time: {current_candle_time} | Inspecting market...")
+                    local_trigger_reason = f"New Candle ({current_candle_time})"
+                
+                # 2. Real-time Spike Trigger (Price moves >= 35 points in a single pulse)
+                elif price_delta >= 35.0:
+                    local_trigger_reason = f"Momentum Spike ({price_delta:.1f} pts change)"
+
+                # 3. Key Pivot Breakout Trigger
+                last_completed = df.iloc[-2]
+                from .tools import MathTools, WebTools, ChartTools
+                pivots = MathTools.calculate_pivot_points(float(last_completed['high']), float(last_completed['low']), float(last_completed['close']))
+                if not is_new_candle and (latest_close >= pivots['r1'] or latest_close <= pivots['s1']):
+                    # Cooldown mechanism: only trigger once per 15s for pivot test
+                    if not hasattr(self, '_last_pivot_alert') or (time.time() - self._last_pivot_alert > 20):
+                        self._last_pivot_alert = time.time()
+                        local_trigger_reason = f"Testing Pivot Boundary (R1={pivots['r1']}, S1={pivots['s1']})"
+
+                # If trigger detected, dispatch to Gemini AI
+                if local_trigger_reason:
+                    logger.info(f"[LOCAL_SCANNER_TRIGGER] Reason: {local_trigger_reason} | Price: {latest_close}")
 
                     # Check spread safety
                     if not self.risk_manager.is_spread_safe(symbol):
-                        time.sleep(10)
+                        time.sleep(2)
                         continue
 
                     # Extract Indicators & Math Tools
                     features = extract_market_features(df)
-                    
-                    # Math Tool: Quant Pivot Points
-                    last_row = df.iloc[-2]  # Completed candle
-                    from .tools import MathTools, WebTools, ChartTools
-                    pivots = MathTools.calculate_pivot_points(float(last_row['high']), float(last_row['low']), float(last_row['close']))
                     features['pivot_points'] = pivots
 
                     # Tools: Spatial Chart Matrix & Web News
                     chart_visual = ChartTools.render_ascii_chart(df, width=35, height=8)
-                    web_news = WebTools.search_news(f"{symbol} gold price market news", max_results=3)
+                    web_news = WebTools.search_news(f"{symbol} gold price market news", max_results=2)
 
                     pos_summary = self.order_manager.get_position_summary(symbol)
 
@@ -94,10 +115,11 @@ class TradingEngine:
                     if signal:
                         self.order_manager.handle_signal(symbol, signal, self.config.trading.min_confidence)
 
-                # Continuous Trailing Stop & Break-Even Evaluation (every 5 seconds)
-                self.order_manager.manage_trailing_and_breakeven(symbol, be_trigger_points=80.0, trailing_step_points=40.0)
+                # Continuous Trailing Stop & Break-Even Evaluation (runs every 2 seconds)
+                self.order_manager.manage_trailing_and_breakeven(symbol, be_trigger_points=60.0, trailing_step_points=30.0)
 
-                time.sleep(5)
+                # High-speed local loop tick (2 seconds)
+                time.sleep(2)
         except KeyboardInterrupt:
             logger.info("Bot execution interrupted by user.")
         finally:
