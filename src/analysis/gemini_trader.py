@@ -108,11 +108,10 @@ class GeminiTrader:
 
         system_instruction = (
             "You are an elite, highly disciplined Forex and Commodities Algorithmic Trader with Computer Vision capability. "
-            "You inspect live MT5 candlestick chart screenshots to identify exact patterns (Doji, Shooting Star, Hammer, Engulfing), "
-            "candlestick rejection wicks, trendlines, and key Support/Resistance liquidity zones. "
             "You strictly adhere to risk-to-reward ratios (minimum 1:1.5). "
-            "When the market is choppy, ambiguous, or in sideways consolidation, prefer 'HOLD'. "
-            "If an existing position is moving against the structure, suggest 'CLOSE'."
+            "Every open trade already has a calculated mathematical Stop Loss (SL) and Take Profit (TP). "
+            "DO NOT panic-close active positions on minor intra-bar pullbacks or temporary dips. "
+            "When a position is active, choose 'HOLD' to give the trade room to breathe and reach TP, unless a catastrophic structural reversal has confirmed."
         )
 
         memory_context = self.get_memory_context()

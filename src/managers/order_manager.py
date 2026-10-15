@@ -38,10 +38,15 @@ class OrderManager:
         open_positions = self.get_open_positions(symbol)
 
         if signal.action == "CLOSE":
-            if open_positions:
-                logger.info(f"Closing all open positions for {symbol} based on AI signal.")
-                self.mt5.close_positions(symbol)
-                return True
+            # Prevent AI premature panic-cutting on minor intra-candle pullbacks.
+            # Only close if high conviction reversal signal (confidence >= 0.90) AND position is actually in profit or at hard invalidation.
+            if open_positions and signal.confidence >= 0.90:
+                pos = open_positions[0]
+                if pos.profit > 0:
+                    logger.info(f"[PROFIT_TAKE] Closing profitable position for {symbol} based on high-conviction AI signal ({signal.confidence:.2f}).")
+                    self.mt5.close_positions(symbol)
+                    return True
+            logger.info(f"[HOLD_PROTECTION] Ignoring premature CLOSE signal ({signal.confidence:.2f}). Letting predefined SL/TP and Trailing Stop manage the position.")
             return False
 
         if signal.action in ["BUY", "SELL"]:
