@@ -67,13 +67,35 @@ class TradingEngine:
                         time.sleep(10)
                         continue
 
+                    # Extract Indicators & Math Tools
                     features = extract_market_features(df)
+                    
+                    # Math Tool: Quant Pivot Points
+                    last_row = df.iloc[-2]  # Completed candle
+                    from .tools import MathTools, WebTools, ChartTools
+                    pivots = MathTools.calculate_pivot_points(float(last_row['high']), float(last_row['low']), float(last_row['close']))
+                    features['pivot_points'] = pivots
+
+                    # Tools: Spatial Chart Matrix & Web News
+                    chart_visual = ChartTools.render_ascii_chart(df, width=35, height=8)
+                    web_news = WebTools.search_news(f"{symbol} gold price market news", max_results=3)
+
                     pos_summary = self.order_manager.get_position_summary(symbol)
 
-                    # Gemini Analysis
-                    signal = self.ai_trader.analyze(symbol, timeframe, features, current_position=pos_summary)
+                    # Gemini Multi-modal Analysis
+                    signal = self.ai_trader.analyze(
+                        symbol=symbol,
+                        timeframe=timeframe,
+                        market_data=features,
+                        current_position=pos_summary,
+                        chart_visual=chart_visual,
+                        web_context=web_news
+                    )
                     if signal:
                         self.order_manager.handle_signal(symbol, signal, self.config.trading.min_confidence)
+
+                # Continuous Trailing Stop & Break-Even Evaluation (every 5 seconds)
+                self.order_manager.manage_trailing_and_breakeven(symbol, be_trigger_points=80.0, trailing_step_points=40.0)
 
                 time.sleep(5)
         except KeyboardInterrupt:

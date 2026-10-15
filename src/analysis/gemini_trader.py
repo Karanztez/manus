@@ -82,7 +82,7 @@ class GeminiTrader:
         self._init_client()
         return True
 
-    def analyze(self, symbol: str, timeframe: str, market_data: dict, current_position: Optional[str] = None) -> Optional[TradeSignal]:
+    def analyze(self, symbol: str, timeframe: str, market_data: dict, current_position: Optional[str] = None, chart_visual: str = "", web_context: str = "") -> Optional[TradeSignal]:
         """
         Sends structured market technical summary to Gemini and extracts
         strictly-typed trade signal using google-genai structured output.
@@ -93,7 +93,8 @@ class GeminiTrader:
             return None
 
         system_instruction = (
-            "You are an elite, highly disciplined Forex and Commodities Algorithmic Trader. "
+            "You are an elite, highly disciplined Forex and Commodities Algorithmic Trader with tools. "
+            "You have access to live Market News, Quant Pivot Points, Technical Indicators, and Spatial Price Action. "
             "Your objective is capital preservation first, then high-probability trend/momentum setups. "
             "You strictly adhere to risk-to-reward ratios (minimum 1:1.5). "
             "When the market is choppy, ambiguous, or in sideways consolidation, prefer 'HOLD'. "
@@ -106,7 +107,13 @@ Analyze the current market condition and provide trading decision for:
 - Timeframe: {timeframe}
 - Current Active Position: {current_position if current_position else 'None'}
 
-Market Technical Data:
+=== 1. FINANCIAL NEWS & MACRO SENTIMENT (Web Tool) ===
+{web_context if web_context else 'Normal market conditions.'}
+
+=== 2. PRICE ACTION MATRIX & RECENT STRUCTURE (Spatial Crop) ===
+{chart_visual if chart_visual else 'Matrix not available'}
+
+=== 3. MARKET TECHNICAL & QUANT DATA ===
 {json.dumps(market_data, indent=2)}
 
 Guidelines:

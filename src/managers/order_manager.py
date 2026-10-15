@@ -76,3 +76,59 @@ class OrderManager:
             )
 
         return False
+
+    def manage_trailing_and_breakeven(self, symbol: str, be_trigger_points: float = 100.0, trailing_step_points: float = 50.0):
+        """
+        Automated Risk Management:
+        1. Break-Even: Move SL to entry price once in profit >= be_trigger_points.
+        2. Trailing Stop: Stepwise trailing of Stop Loss to lock in profits as market advances.
+        """
+        positions = self.get_open_positions(symbol)
+        if not positions:
+            return
+
+        tick = self.mt5.get_symbol_info(symbol)
+        if not tick:
+            return
+
+        for p in positions:
+            ticket = getattr(p, "ticket", None)
+            pos_type = getattr(p, "type", 0)  # 0: BUY, 1: SELL
+            price_open = getattr(p, "price_open", 0.0)
+            cur_sl = getattr(p, "sl", 0.0)
+            cur_tp = getattr(p, "tp", 0.0)
+            
+            # Current price
+            cur_price = getattr(p, "price_current", 0.0)
+            if cur_price == 0.0:
+                continue
+
+            if pos_type == 0:  # BUY
+                profit_points = cur_price - price_open
+                # 1. Break-Even Check
+                if profit_points >= be_trigger_points and cur_sl < price_open:
+                    new_sl = round(price_open + 5.0, 2)  # Entry + small buffer
+                    logger.info(f"[BREAK_EVEN] Moving SL to Breakeven for BUY #{ticket} ({new_sl})")
+                    self.mt5.modify_position(ticket, sl=new_sl, tp=cur_tp)
+
+                # 2. Trailing Stop Check
+                elif profit_points >= (be_trigger_points + trailing_step_points):
+                    ideal_sl = round(cur_price - trailing_step_points, 2)
+                    if ideal_sl > cur_sl:
+                        logger.info(f"[TRAILING_STOP] Stepping SL for BUY #{ticket} to {ideal_sl}")
+                        self.mt5.modify_position(ticket, sl=ideal_sl, tp=cur_tp)
+
+            elif pos_type == 1:  # SELL
+                profit_points = price_open - cur_price
+                # 1. Break-Even Check
+                if profit_points >= be_trigger_points and (cur_sl == 0.0 or cur_sl > price_open):
+                    new_sl = round(price_open - 5.0, 2)  # Entry - small buffer
+                    logger.info(f"[BREAK_EVEN] Moving SL to Breakeven for SELL #{ticket} ({new_sl})")
+                    self.mt5.modify_position(ticket, sl=new_sl, tp=cur_tp)
+
+                # 2. Trailing Stop Check
+                elif profit_points >= (be_trigger_points + trailing_step_points):
+                    ideal_sl = round(cur_price + trailing_step_points, 2)
+                    if cur_sl == 0.0 or ideal_sl < cur_sl:
+                        logger.info(f"[TRAILING_STOP] Stepping SL for SELL #{ticket} to {ideal_sl}")
+                        self.mt5.modify_position(ticket, sl=ideal_sl, tp=cur_tp)

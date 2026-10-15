@@ -275,3 +275,28 @@ class MT5Connector:
                 logger.error(f"Failed to close position #{pos.ticket}: {res.comment}")
 
         return closed_count
+
+    def modify_position(self, ticket: int, sl: float, tp: float) -> bool:
+        """Modify Stop Loss and Take Profit of an existing position."""
+        if not HAS_MT5:
+            for p in self.simulated_positions:
+                if getattr(p, "ticket", None) == ticket:
+                    p.sl = sl
+                    p.tp = tp
+                    logger.info(f"[SIMULATED] Position #{ticket} modified SL={sl}, TP={tp}")
+                    return True
+            return False
+
+        request = {
+            "action": mt5.TRADE_ACTION_SLTP,
+            "position": ticket,
+            "sl": round(sl, 2),
+            "tp": round(tp, 2)
+        }
+        res = mt5.order_send(request)
+        if res.retcode == mt5.TRADE_RETCODE_DONE:
+            logger.info(f"[POSITION_MODIFIED] Ticket #{ticket} SL updated to {sl}, TP={tp}")
+            return True
+        else:
+            logger.error(f"[MODIFY_FAILED] Ticket #{ticket} failed: {res.comment}")
+            return False

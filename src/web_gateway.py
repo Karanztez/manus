@@ -109,6 +109,47 @@ class WebGateway:
                 logger.info(f"[TIMEFRAME_CHANGED] Switched timeframe to {new_tf}")
                 self._send_to_client(client, {"status": "OK", "message": f"Timeframe changed to {new_tf}"})
 
+        elif action == "TRIGGER_SIGNAL":
+            symbol = self.config.trading.symbol
+            tf = self.config.trading.timeframe
+            rates_df = self.engine.mt5.get_rates(symbol, tf, count=self.config.trading.history_bars)
+            if rates_df is not None and len(rates_df) >= 20:
+                from src.analysis.indicators import extract_market_features
+                from src.tools import MathTools, WebTools, ChartTools
+                features = extract_market_features(rates_df)
+                last_row = rates_df.iloc[-2]
+                features['pivot_points'] = MathTools.calculate_pivot_points(float(last_row['high']), float(last_row['low']), float(last_row['close']))
+                chart_visual = ChartTools.render_ascii_chart(rates_df, width=35, height=8)
+                web_news = WebTools.search_news(f"{symbol} gold price news", max_results=3)
+                pos_summary = self.engine.order_manager.get_position_summary(symbol)
+
+                signal = self.engine.ai_trader.analyze(
+                    symbol=symbol,
+                    timeframe=tf,
+                    market_data=features,
+                    current_position=pos_summary,
+                    chart_visual=chart_visual,
+                    web_context=web_news
+                )
+                if signal:
+                    # Execute trade if confidence passes
+                    self.engine.order_manager.handle_signal(symbol, signal, self.config.trading.min_confidence)
+                    self._send_to_client(client, {
+                        "status": "OK",
+                        "action": "SIGNAL_RESULT",
+                        "data": {
+                            "action": signal.action,
+                            "confidence": signal.confidence,
+                            "sl_points": signal.sl_points,
+                            "tp_points": signal.tp_points,
+                            "reasoning": signal.reasoning
+                        }
+                    })
+                else:
+                    self._send_to_client(client, {"status": "ERROR", "message": "AI analysis returned no signal"})
+            else:
+                self._send_to_client(client, {"status": "ERROR", "message": "Insufficient candle data for analysis"})
+
         elif action == "GET_STATUS":
             status = self._collect_status()
             self._send_to_client(client, {"type": "STATUS_UPDATE", "data": status})
