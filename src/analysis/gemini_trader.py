@@ -117,10 +117,14 @@ Analyze the current market condition and provide trading decision for:
 {json.dumps(market_data, indent=2)}
 
 Guidelines:
-1. BUY only when EMA indicates Bullish Trend or Pullback to Support with RSI not overbought (>70).
-2. SELL only when EMA indicates Bearish Trend or Rally to Resistance with RSI not oversold (<30).
-3. If current trend is weak, mixed, or no clear edge, choose 'HOLD'.
-4. Calculate sl_points realistically using ATR (1.5x - 2.0x ATR) or recent swing high/low.
+1. BUY Symmetrical Edge:
+   - Trend continuation: EMA Bullish alignment (9 > 21) with price pulling back to Support/EMA.
+   - Reversal bounce: Sharp rejection wick at Support or Oversold RSI (<35) rebounding up.
+2. SELL Symmetrical Edge (Short Selling / Mean-Reversion):
+   - Trend continuation: EMA Bearish alignment (9 < 21) with price rallying into Resistance/EMA.
+   - Reversal top / Fakeout: Sharp rejection wick at Resistance (e.g. Shooting Star / Bearish Engulfing after a strong rally) or Overbought RSI (>65) breaking below EMA 9.
+3. If market is completely flat and compressed with zero momentum, choose 'HOLD'.
+4. Calculate sl_points realistically using ATR (1.2x - 1.8x ATR) or recent swing high/low.
 5. Set tp_points such that tp_points / sl_points >= 1.5 (Risk to Reward >= 1.5).
 """
 
