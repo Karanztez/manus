@@ -151,18 +151,24 @@ class MT5Connector:
         """Capture live high-definition screenshot directly from MT5 chart window."""
         if not HAS_MT5:
             return False
-        tf = TIMEFRAME_MAP.get(timeframe_str.upper(), mt5.TIMEFRAME_M1)
-        # Find or open chart
-        chart_id = mt5.chart_id_get(symbol=symbol, timeframe=tf)
-        if not chart_id or chart_id == 0:
-            chart_id = mt5.chart_open(symbol, tf)
-            time.sleep(0.5)
+        try:
+            tf = TIMEFRAME_MAP.get(timeframe_str.upper(), mt5.TIMEFRAME_M1)
+            # Find open charts or open a new one
+            charts = mt5.charts_get(symbol=symbol)
+            chart_id = None
+            if charts:
+                chart_id = charts[0]
+            else:
+                chart_id = mt5.chart_open(symbol, tf)
+                time.sleep(0.5)
 
-        if chart_id:
-            res = mt5.chart_screen_shot(chart_id, filename, width, height)
-            if res:
-                logger.info(f"[CHART_SCREENSHOT] Saved MT5 HD chart to {filename}")
-                return True
+            if chart_id:
+                res = mt5.chart_screen_shot(chart_id, filename, width, height)
+                if res and os.path.exists(filename):
+                    logger.info(f"[CHART_SCREENSHOT] Saved MT5 HD chart to {filename}")
+                    return True
+        except Exception as e:
+            logger.warning(f"[CHART_SCREENSHOT_WARN] Could not capture screenshot: {e}")
         return False
 
     def get_account_info(self) -> Optional[Any]:
