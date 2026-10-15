@@ -48,7 +48,7 @@ class ConfigManager:
             raise FileNotFoundError(f"Configuration file not found at: {config_path}")
 
         parser = configparser.ConfigParser()
-        parser.read(config_path, encoding="utf-8")
+        parser.read(config_path, encoding="utf-8-sig")
 
         # Parse keys (comma-separated or fallback)
         raw_keys = parser.get("gemini", "api_keys", fallback="")
