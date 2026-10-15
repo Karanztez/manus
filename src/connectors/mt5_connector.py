@@ -3,6 +3,7 @@ MT5 Connector Module for ManusTrade
 Handles connection, data fetching, and order execution with MetaTrader 5 Terminal.
 """
 
+import os
 import logging
 from typing import Optional, List, Any
 import pandas as pd
