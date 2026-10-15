@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  manustrade:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: manustrade_bot
+    restart: unless-stopped
+    ports:
+      - "3496:3496"
+    volumes:
+      - ./config.ini:/app/config.ini
+      - ./manustrade.log:/app/manustrade.log
+    environment:
+      - PORT=3496

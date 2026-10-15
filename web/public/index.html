@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ManusTrade - AI MetaTrader 5 Dashboard</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script src="lightweight-charts.js"></script>
+</head>
+<body>
+  <div class="app-layout">
+    <!-- Header -->
+    <header class="top-nav">
+      <div class="brand">
+        <span class="brand-badge">PRO</span>
+        <h1>ManusTrade <span class="dim">AI Terminal</span></h1>
+      </div>
+      <div class="terminal-meta">
+        <div class="status-pill" id="terminal-status">
+          <span class="dot"></span>
+          <span class="text">DISCONNECTED</span>
+        </div>
+        <div class="status-pill" id="engine-status">
+          <span class="dot"></span>
+          <span class="text">BOT IDLE</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Grid -->
+    <main class="dashboard-grid">
+      <!-- Metric Cards -->
+      <section class="card metric-card">
+        <div class="card-title">ACCOUNT BALANCE</div>
+        <div class="metric-val" id="val-balance">0.00 <span class="currency">THB</span></div>
+        <div class="sub-meta" id="val-account">Login: - | XMGlobal-MT5 5</div>
+      </section>
+
+      <section class="card metric-card">
+        <div class="card-title">EQUITY</div>
+        <div class="metric-val" id="val-equity">0.00 <span class="currency">THB</span></div>
+        <div class="sub-meta" id="val-margin">Free Margin: -</div>
+      </section>
+
+      <section class="card metric-card">
+        <div class="card-title">ASSET / QUOTE</div>
+        <div class="metric-val text-gold" id="val-symbol">GOLD#</div>
+        <div class="sub-meta" id="val-quote">Bid: 0.00 | Ask: 0.00 | Sprd: 0</div>
+      </section>
+
+      <section class="card metric-card">
+        <div class="card-title">ACTIVE AI MODEL</div>
+        <div class="metric-val text-accent" id="val-model">gemini-flash-latest</div>
+        <div class="sub-meta">Multi-Key Pool (4 Keys Active)</div>
+      </section>
+
+      <!-- Real-Time Trading Chart -->
+      <section class="card chart-card">
+        <div class="card-header">
+          <div class="chart-header-left">
+            <h2>LIVE MARKET CHART (<span id="chart-symbol-label">GOLD#</span> <span id="chart-tf-label" class="text-gold">M15</span>)</h2>
+            <span class="live-tag"><span class="pulse-dot"></span> LIVE TICK TICKING</span>
+          </div>
+          <div class="chart-header-right">
+            <div class="tf-selector">
+              <button type="button" class="tf-btn" onclick="setTimeframe('M1')">M1</button>
+              <button type="button" class="tf-btn" onclick="setTimeframe('M5')">M5</button>
+              <button type="button" class="tf-btn active" id="tf-M15" onclick="setTimeframe('M15')">M15</button>
+              <button type="button" class="tf-btn" onclick="setTimeframe('M30')">M30</button>
+              <button type="button" class="tf-btn" onclick="setTimeframe('H1')">H1</button>
+              <button type="button" class="tf-btn" onclick="setTimeframe('H4')">H4</button>
+              <button type="button" class="tf-btn" onclick="setTimeframe('D1')">D1</button>
+            </div>
+            <div class="chart-price-display">
+              <span class="label">PRICE:</span>
+              <span class="value" id="chart-live-price">0.00</span>
+            </div>
+          </div>
+        </div>
+        <div id="tradingview-chart" class="chart-container"></div>
+      </section>
+
+      <!-- Control Panel -->
+      <section class="card control-card">
+        <div class="card-header">
+          <h2>EXECUTION CONTROL</h2>
+          <span class="hint">Instant Bot Commands</span>
+        </div>
+        <div class="btn-group">
+          <button type="button" id="btn-start" class="btn btn-primary" onclick="sendAction('START_BOT')">
+            START TRADING BOT
+          </button>
+          <button type="button" id="btn-stop" class="btn btn-secondary" onclick="sendAction('STOP_BOT')">
+            PAUSE / STOP
+          </button>
+          <button type="button" id="btn-close-all" class="btn btn-danger" onclick="sendAction('CLOSE_ALL')">
+            EMERGENCY CLOSE ALL
+          </button>
+        </div>
+      </section>
+
+      <!-- Active Positions -->
+      <section class="card positions-card">
+        <div class="card-header">
+          <h2>OPEN POSITIONS</h2>
+          <span class="badge" id="pos-count">0 ACTIVE</span>
+        </div>
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th scope="col">TICKET</th>
+                <th scope="col">TYPE</th>
+                <th scope="col">LOT</th>
+                <th scope="col">OPEN PRICE</th>
+                <th scope="col">SL</th>
+                <th scope="col">TP</th>
+                <th scope="col">PROFIT</th>
+              </tr>
+            </thead>
+            <tbody id="positions-body">
+              <tr>
+                <td colspan="7" class="empty-state">No open positions currently active.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Order Execution History (MT5 Deals) -->
+      <section class="card history-card">
+        <div class="card-header">
+          <h2>RECENT ORDER EXECUTION HISTORY (MT5 DEALS)</h2>
+          <span class="hint">Verified Broker Execution Records</span>
+        </div>
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th scope="col">EXECUTION TIME</th>
+                <th scope="col">DEAL #</th>
+                <th scope="col">ORDER #</th>
+                <th scope="col">SYMBOL</th>
+                <th scope="col">SIDE</th>
+                <th scope="col">VOLUME</th>
+                <th scope="col">PRICE</th>
+                <th scope="col">PROFIT</th>
+              </tr>
+            </thead>
+            <tbody id="history-body">
+              <tr>
+                <td colspan="8" class="empty-state">Loading trading history...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Live Log Stream -->
+      <section class="card log-card">
+        <div class="card-header">
+          <h2>LIVE ACTIVITY FEED</h2>
+          <span class="hint">Real-time AI &amp; MT5 events</span>
+        </div>
+        <div class="log-stream" id="log-box">
+          <div class="log-line">[SYSTEM] Initializing ManusTrade Web Dashboard...</div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

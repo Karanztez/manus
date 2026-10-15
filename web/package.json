@@ -1,0 +1,22 @@
+{
+  "name": "manustrade-web",
+  "version": "1.0.0",
+  "description": "Professional Web Dashboard for ManusTrade AI Trading System (Node.js + TypeScript)",
+  "main": "src/server.ts",
+  "scripts": {
+    "dev": "npx tsx watch src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "socket.io": "^4.8.1",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.13.4",
+    "tsx": "^4.19.3",
+    "typescript": "^5.7.3"
+  }
+}
