@@ -58,7 +58,20 @@ class GeminiTrader:
         self.api_keys = [k for k in api_keys if k and k != "YOUR_GEMINI_API_KEY"]
         self.current_key_index = 0
         self.model_name = model_name
+        self.memory: List[str] = []  # Rolling contextual working memory (last 5 decisions/scans)
         self._init_client()
+
+    def record_memory(self, entry: str):
+        """Maintains rolling fast memory buffer of recent market structure events."""
+        self.memory.append(entry)
+        if len(self.memory) > 5:
+            self.memory.pop(0)
+
+    def get_memory_context(self) -> str:
+        """Returns condensed sequential context for the AI."""
+        if not self.memory:
+            return "No previous decisions recorded yet (Initial cycle)."
+        return "\n".join(f"- {m}" for m in self.memory)
 
     def _init_client(self):
         if not self.api_keys:
@@ -82,10 +95,10 @@ class GeminiTrader:
         self._init_client()
         return True
 
-    def analyze(self, symbol: str, timeframe: str, market_data: dict, current_position: Optional[str] = None, chart_visual: str = "", web_context: str = "") -> Optional[TradeSignal]:
+    def analyze(self, symbol: str, timeframe: str, market_data: dict, current_position: Optional[str] = None, chart_visual: str = "", web_context: str = "", local_scan_note: str = "") -> Optional[TradeSignal]:
         """
-        Sends structured market technical summary to Gemini and extracts
-        strictly-typed trade signal using google-genai structured output.
+        Sends structured market technical summary + Fast Memory + Local Scanner Note to Gemini.
+        Extracts strictly-typed trade signal using google-genai structured output.
         Automatically switches to next API key if quota limit or error occurs.
         """
         if not self.api_keys:
@@ -93,27 +106,33 @@ class GeminiTrader:
             return None
 
         system_instruction = (
-            "You are an elite, highly disciplined Forex and Commodities Algorithmic Trader with tools. "
-            "You have access to live Market News, Quant Pivot Points, Technical Indicators, and Spatial Price Action. "
+            "You are an elite, highly disciplined Forex and Commodities Algorithmic Trader with tools and sequential memory. "
+            "You remember your previous analysis steps and understand real-time momentum triggers passed by the local scanner. "
             "Your objective is capital preservation first, then high-probability trend/momentum setups. "
             "You strictly adhere to risk-to-reward ratios (minimum 1:1.5). "
             "When the market is choppy, ambiguous, or in sideways consolidation, prefer 'HOLD'. "
             "If an existing position is moving against the structure, suggest 'CLOSE'."
         )
 
+        memory_context = self.get_memory_context()
+
         prompt = f"""
 Analyze the current market condition and provide trading decision for:
 - Asset: {symbol}
 - Timeframe: {timeframe}
 - Current Active Position: {current_position if current_position else 'None'}
+- Local Scanner Trigger Note: {local_scan_note if local_scan_note else 'Regular Candle Scan'}
 
-=== 1. FINANCIAL NEWS & MACRO SENTIMENT (Web Tool) ===
+=== 1. AI SHORT-TERM WORKING MEMORY (Previous Steps & Decisions) ===
+{memory_context}
+
+=== 2. FINANCIAL NEWS & MACRO SENTIMENT (Web Tool) ===
 {web_context if web_context else 'Normal market conditions.'}
 
-=== 2. PRICE ACTION MATRIX & RECENT STRUCTURE (Spatial Crop) ===
+=== 3. PRICE ACTION MATRIX & RECENT STRUCTURE (Spatial Crop) ===
 {chart_visual if chart_visual else 'Matrix not available'}
 
-=== 3. MARKET TECHNICAL & QUANT DATA ===
+=== 4. MARKET TECHNICAL & QUANT DATA ===
 {json.dumps(market_data, indent=2)}
 
 Guidelines:
@@ -166,6 +185,11 @@ Guidelines:
                 else:
                     data = json.loads(response.text)
                     signal = TradeSignal(**data)
+                
+                # Record to working memory for sequential continuity
+                mem_entry = f"[{timeframe}] Action: {signal.action} (Conf: {signal.confidence:.2f}) | {signal.reasoning[:120]}..."
+                self.record_memory(mem_entry)
+
                 logger.info(f"[ANALYSIS] {symbol} {timeframe} | Decision: {signal.action} (Confidence: {signal.confidence:.2f}) | {signal.reasoning}")
                 return signal
             except Exception as e:

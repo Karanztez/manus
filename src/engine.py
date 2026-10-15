@@ -103,14 +103,15 @@ class TradingEngine:
 
                     pos_summary = self.order_manager.get_position_summary(symbol)
 
-                    # Gemini Multi-modal Analysis
+                    # Gemini Multi-modal Analysis with Memory & Local Context
                     signal = self.ai_trader.analyze(
                         symbol=symbol,
                         timeframe=timeframe,
                         market_data=features,
                         current_position=pos_summary,
                         chart_visual=chart_visual,
-                        web_context=web_news
+                        web_context=web_news,
+                        local_scan_note=local_trigger_reason
                     )
                     if signal:
                         self.order_manager.handle_signal(symbol, signal, self.config.trading.min_confidence)
