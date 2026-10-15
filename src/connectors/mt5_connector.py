@@ -147,6 +147,24 @@ class MT5Connector:
             return None
         return info
 
+    def save_chart_screenshot(self, symbol: str, timeframe_str: str, filename: str, width: int = 800, height: int = 450) -> bool:
+        """Capture live high-definition screenshot directly from MT5 chart window."""
+        if not HAS_MT5:
+            return False
+        tf = TIMEFRAME_MAP.get(timeframe_str.upper(), mt5.TIMEFRAME_M1)
+        # Find or open chart
+        chart_id = mt5.chart_id_get(symbol=symbol, timeframe=tf)
+        if not chart_id or chart_id == 0:
+            chart_id = mt5.chart_open(symbol, tf)
+            time.sleep(0.5)
+
+        if chart_id:
+            res = mt5.chart_screen_shot(chart_id, filename, width, height)
+            if res:
+                logger.info(f"[CHART_SCREENSHOT] Saved MT5 HD chart to {filename}")
+                return True
+        return False
+
     def get_account_info(self) -> Optional[Any]:
         """Get account information."""
         if not HAS_MT5:

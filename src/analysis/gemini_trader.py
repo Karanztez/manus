@@ -95,9 +95,9 @@ class GeminiTrader:
         self._init_client()
         return True
 
-    def analyze(self, symbol: str, timeframe: str, market_data: dict, current_position: Optional[str] = None, chart_visual: str = "", web_context: str = "", local_scan_note: str = "") -> Optional[TradeSignal]:
+    def analyze(self, symbol: str, timeframe: str, market_data: dict, current_position: Optional[str] = None, chart_visual: str = "", web_context: str = "", local_scan_note: str = "", image_path: Optional[str] = None) -> Optional[TradeSignal]:
         """
-        Sends structured market technical summary + Fast Memory + Local Scanner Note to Gemini.
+        Sends structured market technical summary + Fast Memory + Real Screenshot Image to Gemini Vision.
         Extracts strictly-typed trade signal using google-genai structured output.
         Automatically switches to next API key if quota limit or error occurs.
         """
@@ -106,9 +106,9 @@ class GeminiTrader:
             return None
 
         system_instruction = (
-            "You are an elite, highly disciplined Forex and Commodities Algorithmic Trader with tools and sequential memory. "
-            "You remember your previous analysis steps and understand real-time momentum triggers passed by the local scanner. "
-            "Your objective is capital preservation first, then high-probability trend/momentum setups. "
+            "You are an elite, highly disciplined Forex and Commodities Algorithmic Trader with Computer Vision capability. "
+            "You inspect live MT5 candlestick chart screenshots to identify exact patterns (Doji, Shooting Star, Hammer, Engulfing), "
+            "candlestick rejection wicks, trendlines, and key Support/Resistance liquidity zones. "
             "You strictly adhere to risk-to-reward ratios (minimum 1:1.5). "
             "When the market is choppy, ambiguous, or in sideways consolidation, prefer 'HOLD'. "
             "If an existing position is moving against the structure, suggest 'CLOSE'."
@@ -162,6 +162,16 @@ Guidelines:
                 if HAS_PYDANTIC:
                     gen_config["response_schema"] = TradeSignal
 
+                contents_payload = [prompt]
+                if image_path and os.path.exists(image_path):
+                    try:
+                        with open(image_path, "rb") as f:
+                            img_bytes = f.read()
+                        contents_payload.append(types.Part.from_bytes(data=img_bytes, mime_type="image/png"))
+                        logger.info(f"[VISION_DISPATCH] Embedded real chart screenshot ({len(img_bytes)} bytes) into Gemini payload.")
+                    except Exception as e:
+                        logger.warning(f"[VISION_WARN] Failed to read chart image {image_path}: {e}")
+
                 models_to_try = [self.model_name, "gemini-2.5-flash", "gemini-1.5-flash"]
                 last_exc = None
                 response = None
@@ -169,7 +179,7 @@ Guidelines:
                     try:
                         response = self.client.models.generate_content(
                             model=m,
-                            contents=prompt,
+                            contents=contents_payload,
                             config=types.GenerateContentConfig(**gen_config),
                         )
                         break

@@ -107,9 +107,15 @@ class TradingEngine:
                     chart_visual = ChartTools.render_ascii_chart(df, width=35, height=8)
                     web_news = WebTools.search_news(f"{symbol} gold price market news", max_results=2)
 
+                    # Tools: Capture Real HD Screenshot from MT5
+                    import os
+                    screenshot_file = os.path.join(os.getcwd(), f"chart_{symbol}_{timeframe}.png")
+                    has_screenshot = self.mt5.save_chart_screenshot(symbol, timeframe, screenshot_file, width=800, height=450)
+                    active_img_path = screenshot_file if has_screenshot and os.path.exists(screenshot_file) else None
+
                     pos_summary = self.order_manager.get_position_summary(symbol)
 
-                    # Gemini Multi-modal Analysis with Memory & Local Context
+                    # Gemini Multi-modal Analysis with Memory, Vision Screenshot & Local Context
                     signal = self.ai_trader.analyze(
                         symbol=symbol,
                         timeframe=timeframe,
@@ -117,7 +123,8 @@ class TradingEngine:
                         current_position=pos_summary,
                         chart_visual=chart_visual,
                         web_context=web_news,
-                        local_scan_note=local_trigger_reason
+                        local_scan_note=local_trigger_reason,
+                        image_path=active_img_path
                     )
                     if signal:
                         self.order_manager.handle_signal(symbol, signal, self.config.trading.min_confidence)
