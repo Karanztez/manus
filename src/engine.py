@@ -34,7 +34,8 @@ class TradingEngine:
             max_daily_drawdown_percent=config.risk.max_daily_drawdown_percent,
             max_trades_per_hour=config.risk.max_trades_per_hour,
             min_sl_points=config.risk.min_sl_points,
-            news_protection_enabled=config.risk.news_protection_enabled
+            news_protection_enabled=config.risk.news_protection_enabled,
+            max_spread_crypto=config.risk.max_spread_crypto
         )
         self.order_manager = OrderManager(
             mt5_connector=self.mt5,

@@ -34,6 +34,7 @@ class RiskConfig:
     max_trades_per_hour: int = 4
     min_sl_points: float = 6.0
     news_protection_enabled: bool = True
+    max_spread_crypto: float = 2500.0
 
 @dataclass
 class MT5Config:
@@ -98,7 +99,8 @@ class ConfigManager:
             max_daily_drawdown_percent=parser.getfloat("risk", "max_daily_drawdown_percent", fallback=3.0),
             max_trades_per_hour=parser.getint("risk", "max_trades_per_hour", fallback=4),
             min_sl_points=parser.getfloat("risk", "min_sl_points", fallback=6.0),
-            news_protection_enabled=parser.getboolean("risk", "news_protection_enabled", fallback=True)
+            news_protection_enabled=parser.getboolean("risk", "news_protection_enabled", fallback=True),
+            max_spread_crypto=parser.getfloat("risk", "max_spread_crypto", fallback=2500.0)
         )
 
         mt5_cfg = MT5Config(

@@ -25,12 +25,14 @@ class RiskManager:
         max_daily_drawdown_percent: float = 3.0,
         max_trades_per_hour: int = 4,
         min_sl_points: float = 6.0,
-        news_protection_enabled: bool = True
+        news_protection_enabled: bool = True,
+        max_spread_crypto: float = 2500.0
     ):
         self.mt5 = mt5_connector
         self.risk_percent = risk_percent
         self.fixed_lot = fixed_lot
         self.max_spread_points = max_spread_points
+        self.max_spread_crypto = max_spread_crypto
         self.min_rr_ratio = min_rr_ratio
         self.consecutive_loss_limit = consecutive_loss_limit
         self.loss_cooldown_minutes = loss_cooldown_minutes
@@ -146,14 +148,24 @@ class RiskManager:
         return True, ""
 
     def is_spread_safe(self, symbol: str) -> bool:
-        """Checks if current market spread is within safety limits."""
+        """
+        Checks if current market spread is within safety limits.
+        Dynamically applies Crypto-specific threshold (e.g. BTCUSD# / ETHUSD#)
+        vs standard Forex/Gold threshold.
+        """
         info = self.mt5.get_symbol_info(symbol)
         if not info:
             return False
         
         spread = getattr(info, "spread", 0.0)
-        if spread > self.max_spread_points:
-            logger.warning(f"Spread for {symbol} ({spread}) exceeds threshold ({self.max_spread_points}).")
+        symbol_upper = symbol.upper()
+
+        is_crypto = any(c in symbol_upper for c in ["BTC", "ETH", "SOL", "XRP", "BNB", "DOGE"])
+        threshold = self.max_spread_crypto if is_crypto else self.max_spread_points
+
+        if spread > threshold:
+            category = "Crypto" if is_crypto else "Standard"
+            logger.warning(f"Spread for {symbol} ({spread} pts) exceeds {category} threshold ({threshold} pts).")
             return False
         return True
 
