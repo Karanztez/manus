@@ -12,20 +12,16 @@ def calculate_ema(series: pd.Series, period: int) -> pd.Series:
 
 def calculate_rsi(series: pd.Series, period: int = 14) -> pd.Series:
     delta = series.diff()
-    gain = delta.where(delta > 0, 0.0)
-    loss = -delta.where(delta < 0, 0.0)
+    gain = delta.clip(lower=0.0)
+    loss = -delta.clip(upper=0.0)
     
-    avg_gain = gain.rolling(window=period, min_periods=period).mean()
-    avg_loss = loss.rolling(window=period, min_periods=period).mean()
-    
-    # Smooth with EMA-like Wilder smoothing
-    for i in range(period, len(series)):
-        avg_gain.iloc[i] = (avg_gain.iloc[i-1] * (period - 1) + gain.iloc[i]) / period
-        avg_loss.iloc[i] = (avg_loss.iloc[i-1] * (period - 1) + loss.iloc[i]) / period
+    # Vectorized Wilder exponential smoothing (com = period - 1, alpha = 1/period)
+    avg_gain = gain.ewm(alpha=1.0/period, min_periods=period, adjust=False).mean()
+    avg_loss = loss.ewm(alpha=1.0/period, min_periods=period, adjust=False).mean()
 
     rs = avg_gain / avg_loss.replace(0, np.nan)
-    rsi = 100 - (100 / (1 + rs))
-    return rsi.fillna(50)
+    rsi = 100.0 - (100.0 / (1.0 + rs))
+    return rsi.fillna(50.0)
 
 def calculate_atr(df: pd.DataFrame, period: int = 14) -> pd.Series:
     high = df['high']
