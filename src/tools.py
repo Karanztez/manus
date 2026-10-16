@@ -137,10 +137,42 @@ class WebTools:
         return False, ""
 
     @staticmethod
+    def get_forexfactory_daily_sentiment(symbol: str) -> str:
+        """
+        Extracts Today's Orange (Medium Impact) & Yellow (Low Impact) events from ForexFactory.
+        Gives AI deep context on macroeconomic data flow without triggering a trade pause.
+        """
+        events = WebTools.get_forexfactory_calendar()
+        if not events:
+            return ""
+
+        currencies_to_watch = ["USD"]
+        if "EUR" in symbol:
+            currencies_to_watch.append("EUR")
+        if "JPY" in symbol:
+            currencies_to_watch.append("JPY")
+        if "GBP" in symbol:
+            currencies_to_watch.append("GBP")
+
+        summary_events = []
+        for e in events:
+            impact = e.get("impact", "").capitalize()
+            country = e.get("country", "")
+            title = e.get("title", "")
+            if country in currencies_to_watch and impact in ["Medium", "Low", "High"]:
+                actual = e.get("actual", "")
+                forecast = e.get("forecast", "")
+                prev = e.get("previous", "")
+                data_stat = f" (Actual: {actual}, Forecast: {forecast})" if actual or forecast else ""
+                summary_events.append(f"[{impact.upper()}] {country}: {title}{data_stat}")
+
+        return " | ".join(summary_events[:6]) if summary_events else ""
+
+    @staticmethod
     def get_macroeconomic_brief(symbol: str = "GOLD") -> str:
         """
         Global Macroeconomic Intelligence:
-        Searches ForexFactory events + central bank posture, US Dollar Index (DXY), and Treasury yields.
+        Combines ForexFactory Economic Calendar (Red, Orange, Yellow) + Web Market Sentiment.
         Caches results for 5 minutes to prevent network timeouts during rapid M1 candle evaluation.
         """
         import time
@@ -149,13 +181,18 @@ class WebTools:
             if now - WebTools._macro_cache_time.get(symbol, 0) < 300:
                 return WebTools._macro_cache[symbol]
 
+        ff_context = WebTools.get_forexfactory_daily_sentiment(symbol)
+
         queries = [
             f"{symbol} price forecast DXY inflation fed rates",
             "US Dollar 10-year Treasury yield gold impact today"
         ]
         briefs = []
+        if ff_context:
+            briefs.append(f"ForexFactory Calendar: {ff_context}")
+
         for q in queries:
-            res = WebTools.search_news(q, max_results=2)
+            res = WebTools.search_news(q, max_results=1)
             if res and "[INFO]" not in res:
                 briefs.append(res)
 
