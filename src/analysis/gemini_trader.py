@@ -154,15 +154,14 @@ class GeminiTrader:
             return None
 
         system_instruction = (
-            "You are a dual-domain expert: a Senior Global Macroeconomist & Central Bank Analyst, combined with an elite Quantitative Forex & Commodities Algorithmic Trader. "
-            "You synthesize fundamental economic forces (US Dollar Index / DXY, Treasury Yields, Inflation/CPI/PPI, Central Bank Interest Rate trajectory) "
-            "with high-precision Price Action, Multi-Timeframe Alignment, and Computer Vision. "
-            "You understand Intermarket Relationships: "
-            "- A surging US Dollar (DXY) and rising 10-year Treasury yields create severe headwinds for Gold (XAUUSD), discouraging aggressive BUY entries. "
-            "- A softening Dollar, falling yields, or geopolitical safe-haven demand accelerates Gold rallies. "
-            "You strictly adhere to risk-to-reward ratios (minimum 1:1.5). "
-            "DO NOT panic-close active positions on minor intra-bar pullbacks. "
-            "When a position is active, choose 'HOLD' to let predefined mathematical SL/TP and Trailing Stop execute."
+            "You are an Elite Institutional Trading Committee consisting of THREE specialized master minds working in perfect synergy:\n"
+            "1. THE HIGH-PRECISION TECHNICAL ANALYST: A master of Price Action, Market Structure Shift (MSS), Rejection Wicks, Liquidity Sweeps, and Order Blocks. You pinpoint exact entry trigger timing down to the sub-millisecond candle close and demand high-probability execution.\n"
+            "2. THE APPLIED MATHEMATICAL QUANT: A disciplined mathematical risk theorist specializing in Kelly Criterion, ATR-based Stop Loss volatility buffers, Expected Value (EV), and asymmetric Risk-to-Reward distribution (minimum 1:1.5 to 1:3). You calculate odds coldly and ruthlessly veto trades with negative mathematical expectancy.\n"
+            "3. THE GLOBAL MACROECONOMIST & CENTRAL BANK ANALYST: A macro strategist tracking central bank policy trajectories, Intermarket flows (US Dollar DXY, 10Y Treasury Yields, Inflation CPI/PPI, Geopolitical Risk), and ForexFactory Red/Orange/Yellow economic releases. You ensure trades never fight macro tides.\n\n"
+            "DECISION PROTOCOL:\n"
+            "- A signal (BUY or SELL) is only approved if all 3 perspectives achieve UNANIMOUS CONFLUENCE.\n"
+            "- If the Macroeconomist warns of headwind, the Mathematician calculates inadequate RR, or the Technical Analyst spots an exhausted climax/overextension, the committee MUST vote 'HOLD'.\n"
+            "- When an active position is open, default to 'HOLD' to let mathematical Trailing Stops and Fast Break-Even execute."
         )
 
         memory_context = self.get_memory_context()
@@ -186,14 +185,19 @@ Analyze the current market condition and provide trading decision for:
 === 4. MARKET TECHNICAL & QUANT DATA ===
 {json.dumps(market_data, indent=2)}
 
-Guidelines:
-1. Macroeconomist Assessment (Intermarket Confluence):
-   - Evaluate Section 2 (Macro Intelligence): If US Dollar (DXY) or Bond Yields are surging, DO NOT open BUY positions into resistance.
-   - If Macro sentiment is clearly Bearish for Gold, only consider High-Probability SELL setups or 'HOLD'.
-2. Multi-Timeframe Confluence Rule (CRITICAL):
+TRI-BRAIN COMMITTEE EVALUATION GUIDELINES:
+1. Macroeconomist Assessment (Fundamental & Intermarket Confluence):
+   - Assess ForexFactory releases & DXY/Yields. If Dollar is surging or Treasury yields spike, forbid BUY on Gold/EURUSD.
+   - If Macro sentiment is Bearish, approve only High-Probability SELL setups or 'HOLD'.
+2. Applied Mathematical Quant Assessment (Risk / Reward & Probability):
+   - SL distance MUST be anchored outside market noise (using ATR or beyond swing points), minimum 6.0 pts.
+   - Target TP must offer at least 1:1.5 RR (1.5x of SL). If structure limits TP before 1.5x, VETO the trade with 'HOLD'.
+   - Evaluate Bollinger Bandwidth and ATR: during low-volatility compression, prepare for expansion; during climax exhaustion, refuse to enter.
+3. High-Precision Technical Analyst Assessment (Structure & Confirmation):
    - Check 'multi_timeframe_alignment' in technical data (M1, M5, M15, H1).
-   - If macro bias is CONFLICTED / MIXED, be extremely conservative and prefer 'HOLD'.
-   - NEVER BUY if M15 and H1 are strongly BEARISH, and NEVER SELL if M15 and H1 are strongly BULLISH (unless there is a massive reversal rejection wick at key Pivot levels).
+   - If macro bias is CONFLICTED / MIXED, veto entry and select 'HOLD'.
+   - NEVER BUY if M15/H1 are strongly BEARISH, and NEVER SELL if M15/H1 are strongly BULLISH.
+   - Verify Candlestick confirmation: Rejecting pinbars, rejection wicks at key Support/Resistance/Order Blocks.
 3. 6 ELITE TRADING PLAYBOOKS (Execute the setup that matches the current regime):
    --- PLAYBOOK A: Trend Following on EMA Pullback (London & US Sessions) ---
    - Condition: Clear trend in M5/M15 (EMA 9 > 21 > 50 for Bullish, or 9 < 21 < 50 for Bearish).
