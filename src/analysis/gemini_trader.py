@@ -143,9 +143,9 @@ class GeminiTrader:
             self._key_states[key]["failures"] = 0
             self._key_states[key]["last_error"] = ""
 
-    def analyze(self, symbol: str, timeframe: str, market_data: dict, current_position: Optional[str] = None, chart_visual: str = "", web_context: str = "", local_scan_note: str = "", image_path: Optional[str] = None) -> Optional[TradeSignal]:
+    def analyze(self, symbol: str, timeframe: str, market_data: dict, current_position: Optional[str] = None, chart_visual: str = "", web_context: str = "", local_scan_note: str = "", image_path: Optional[str] = None, adaptive_memory: str = "") -> Optional[TradeSignal]:
         """
-        Sends structured market technical summary + Fast Memory + Real Screenshot Image to Gemini Vision.
+        Sends structured market technical summary + Fast Memory + Adaptive Trade Journal + Real Screenshot Image to Gemini Vision.
         Extracts strictly-typed trade signal using google-genai structured output.
         Automatically switches to next API key if quota limit or error occurs.
         """
@@ -175,13 +175,16 @@ Analyze the current market condition and provide trading decision for:
 - Current Active Position: {current_position if current_position else 'None'}
 - Local Scanner Trigger Note: {local_scan_note if local_scan_note else 'Regular Candle Scan'}
 
-=== 1. AI SHORT-TERM WORKING MEMORY (Previous Steps & Decisions) ===
+=== 1. AI SHORT-TERM WORKING MEMORY (Recent Decisions & Cycle Buffer) ===
 {memory_context}
 
-=== 2. GLOBAL MACROECONOMIC INTELLIGENCE & SENTIMENT (Web & Central Bank Data) ===
+=== 2. ADAPTIVE LONG-TERM TRADE JOURNAL (Past Real Trade Lessons & Reflections) ===
+{adaptive_memory if adaptive_memory else 'No previous closed trades recorded yet (Clean slate).'}
+
+=== 3. GLOBAL MACROECONOMIC INTELLIGENCE & SENTIMENT (Web & Central Bank Data) ===
 {web_context if web_context else 'Normal market conditions.'}
 
-=== 3. PRICE ACTION MATRIX & RECENT STRUCTURE (Spatial Crop) ===
+=== 4. PRICE ACTION MATRIX & RECENT STRUCTURE (Spatial Crop) ===
 {chart_visual if chart_visual else 'Matrix not available'}
 
 === 4. MARKET TECHNICAL & QUANT DATA ===

@@ -61,6 +61,23 @@ class RiskManager:
                 self._processed_deal_tickets.add(ticket)
                 profit = getattr(d, "profit", 0.0)
                 deal_time = getattr(d, "time", time.time())
+                deal_symbol = getattr(d, "symbol", "GOLD#")
+                deal_type = getattr(d, "type", 0)
+                action_str = "BUY" if deal_type == 0 else "SELL"
+
+                # Persist to TradeJournal for AI self-reflection
+                try:
+                    from ..memory.trade_journal import TradeJournal
+                    journal = TradeJournal()
+                    journal.record_trade_result(
+                        symbol=deal_symbol,
+                        action=action_str,
+                        profit=profit,
+                        reason=f"Closed Deal #{ticket}"
+                    )
+                except Exception as ex:
+                    logger.debug(f"Could not record deal to journal: {ex}")
+
                 if profit < 0:
                     self.consecutive_losses += 1
                     self.last_loss_time = deal_time

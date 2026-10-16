@@ -454,6 +454,35 @@ class ChartTools:
         chart_lines.append("         +" + "-" * len(recent))
         return "\n".join(chart_lines)
 
+    @staticmethod
+    def crop_chart_action_area(image_path: str, output_path: Optional[str] = None, focus_ratio: float = 0.65) -> Optional[str]:
+        """
+        Crops and zooms into the rightmost active trading area (the latest action candles and price scale).
+        Cuts out redundant left-side history and top/bottom window chrome so Gemini Vision focuses
+        100% on the latest order blocks, rejection wicks, and current price level.
+        """
+        if not image_path or not os.path.exists(image_path):
+            return None
+
+        try:
+            from PIL import Image
+            with Image.open(image_path) as img:
+                w, h = img.size
+                # Crop rightmost `focus_ratio` (e.g. last 65% of chart) and middle vertical trading zone
+                left = int(w * (1.0 - focus_ratio))
+                top = int(h * 0.05)       # trim top window header/tabs
+                right = w
+                bottom = int(h * 0.95)    # trim bottom taskbar/tabs
+
+                cropped = img.crop((left, top, right, bottom))
+                target = output_path or image_path.replace(".png", "_cropped.png")
+                cropped.save(target, format="PNG", optimize=True)
+                logger.info(f"[CHART_VISION_CROP] Cropped chart action zone saved to {target} ({cropped.size[0]}x{cropped.size[1]})")
+                return target
+        except Exception as e:
+            logger.warning(f"[CHART_CROP_WARN] Failed to crop chart image: {e}")
+            return image_path
+
 # =====================================================================
 # 4. Multi-Timeframe Confluence Scanner (M1, M5, M15, H1)
 # =====================================================================

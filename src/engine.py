@@ -12,6 +12,7 @@ from .analysis.indicators import extract_market_features
 from .analysis.gemini_trader import GeminiTrader
 from .managers.risk_manager import RiskManager
 from .managers.order_manager import OrderManager
+from .memory.trade_journal import TradeJournal
 
 logger = logging.getLogger("ManusTrade.Engine")
 
@@ -19,6 +20,7 @@ class TradingEngine:
     def __init__(self, config: AppConfig):
         self.config = config
         self.mt5 = MT5Connector(magic_number=config.trading.magic_number)
+        self.journal = TradeJournal()
         self.ai_trader = GeminiTrader(
             api_keys=config.gemini.api_keys,
             model_name=config.gemini.model_name
@@ -173,15 +175,20 @@ class TradingEngine:
                         # Spatial Chart Matrix
                         chart_visual = ChartTools.render_ascii_chart(df, width=35, height=8)
 
-                        # Capture Real HD Screenshot from MT5
+                        # Capture Real HD Screenshot from MT5 & Focus Crop on Action Area
                         import os
                         screenshot_file = os.path.join(os.getcwd(), f"chart_{symbol}_{timeframe}.png")
                         has_screenshot = self.mt5.save_chart_screenshot(symbol, timeframe, screenshot_file, width=800, height=450)
-                        active_img_path = screenshot_file if has_screenshot and os.path.exists(screenshot_file) else None
+                        if has_screenshot and os.path.exists(screenshot_file):
+                            cropped_file = ChartTools.crop_chart_action_area(screenshot_file, focus_ratio=0.70)
+                            active_img_path = cropped_file if cropped_file and os.path.exists(cropped_file) else screenshot_file
+                        else:
+                            active_img_path = None
 
                         pos_summary = self.order_manager.get_position_summary(symbol)
+                        adaptive_brief = self.journal.get_adaptive_memory_brief(symbol)
 
-                        # Gemini Multi-modal Analysis with Memory, Vision Screenshot & Local Context
+                        # Gemini Multi-modal Analysis with Memory, Vision Screenshot, Crop & Adaptive Journal
                         signal = self.ai_trader.analyze(
                             symbol=symbol,
                             timeframe=timeframe,
@@ -190,7 +197,8 @@ class TradingEngine:
                             chart_visual=chart_visual,
                             web_context=web_news,
                             local_scan_note=local_trigger_reason,
-                            image_path=active_img_path
+                            image_path=active_img_path,
+                            adaptive_memory=adaptive_brief
                         )
                         if signal:
                             self.order_manager.handle_signal(
