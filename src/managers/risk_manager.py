@@ -194,7 +194,8 @@ class RiskManager:
         action: str,
         sl_points: float,
         tp_points: float,
-        macro_bias: str = ""
+        macro_bias: str = "",
+        market_features: Optional[dict] = None
     ) -> Tuple[bool, str]:
         """
         Master gatekeeper: verifies spread, drawdown, cooldown, frequency, MTF, and RR.
@@ -226,7 +227,17 @@ class RiskManager:
             if not safe:
                 return False, msg
 
-        # 6. Risk-to-Reward Ratio
+        # 6. Overextension / Exhaustion Check (Prevent Chasing Tops/Bottoms)
+        if market_features:
+            rsi = market_features.get("rsi_14", 50.0)
+            if action == "BUY" and rsi > 70.0:
+                logger.warning(f"[EXHAUSTION_GUARD] Rejecting BUY: RSI-14 is {rsi:.1f} (Overbought climax). Do not chase tops.")
+                return False, f"Exhaustion Guard: RSI-14 ({rsi:.1f}) is Overbought. Wait for pullback."
+            elif action == "SELL" and rsi < 30.0:
+                logger.warning(f"[EXHAUSTION_GUARD] Rejecting SELL: RSI-14 is {rsi:.1f} (Oversold floor). Do not chase bottoms.")
+                return False, f"Exhaustion Guard: RSI-14 ({rsi:.1f}) is Oversold. Wait for pullback."
+
+        # 7. Risk-to-Reward Ratio
         if not self.validate_rr_ratio(sl_points, tp_points):
             return False, f"Risk to Reward ratio below minimum requirement ({self.min_rr_ratio})."
 

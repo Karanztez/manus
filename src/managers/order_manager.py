@@ -27,7 +27,7 @@ class OrderManager:
         pos_type = "BUY" if pos.type == 0 else "SELL"
         return f"{pos_type} #{pos.ticket} (Open: {pos.price_open}, Profit: {pos.profit})"
 
-    def handle_signal(self, symbol: str, signal: TradeSignal, min_confidence: float, macro_bias: str = "") -> bool:
+    def handle_signal(self, symbol: str, signal: TradeSignal, min_confidence: float, macro_bias: str = "", market_features: Optional[dict] = None) -> bool:
         """
         Processes a trade signal through comprehensive risk verification and order execution.
         """
@@ -73,7 +73,8 @@ class OrderManager:
                 action=signal.action,
                 sl_points=sl_points,
                 tp_points=tp_points,
-                macro_bias=macro_bias
+                macro_bias=macro_bias,
+                market_features=market_features
             )
             if not can_open:
                 logger.warning(f"[ORDER_REJECTED_BY_RISK] {reason}")
@@ -121,6 +122,12 @@ class OrderManager:
         if not tick:
             return
 
+        # Dynamic spread buffer calculation (Spread * 1.5 converted to price points)
+        spread_raw = getattr(tick, "spread", 20.0)
+        point_size = getattr(tick, "point", 0.01)
+        spread_points = spread_raw * point_size
+        be_buffer = max(0.35, round(spread_points * 1.5, 2))
+
         for p in positions:
             ticket = getattr(p, "ticket", None)
             pos_type = getattr(p, "type", 0)  # 0: BUY, 1: SELL
@@ -135,10 +142,10 @@ class OrderManager:
 
             if pos_type == 0:  # BUY
                 profit_points = cur_price - price_open
-                # 1. Break-Even Check: lock entry + $0.30 buffer
+                # 1. Break-Even Check: lock entry + dynamic spread buffer
                 if profit_points >= be_trigger_points and (cur_sl < price_open or cur_sl == 0.0):
-                    new_sl = round(price_open + 0.30, 2)
-                    logger.info(f"[BREAK_EVEN] Moving SL to Breakeven for BUY #{ticket} ({new_sl})")
+                    new_sl = round(price_open + be_buffer, 2)
+                    logger.info(f"[BREAK_EVEN] Moving SL to Breakeven for BUY #{ticket} ({new_sl}) with buffer {be_buffer}")
                     self.mt5.modify_position(ticket, sl=new_sl, tp=cur_tp)
 
                 # 2. Trailing Stop Check
@@ -150,10 +157,10 @@ class OrderManager:
 
             elif pos_type == 1:  # SELL
                 profit_points = price_open - cur_price
-                # 1. Break-Even Check: lock entry - $0.30 buffer
+                # 1. Break-Even Check: lock entry - dynamic spread buffer
                 if profit_points >= be_trigger_points and (cur_sl > price_open or cur_sl == 0.0):
-                    new_sl = round(price_open - 0.30, 2)
-                    logger.info(f"[BREAK_EVEN] Moving SL to Breakeven for SELL #{ticket} ({new_sl})")
+                    new_sl = round(price_open - be_buffer, 2)
+                    logger.info(f"[BREAK_EVEN] Moving SL to Breakeven for SELL #{ticket} ({new_sl}) with buffer {be_buffer}")
                     self.mt5.modify_position(ticket, sl=new_sl, tp=cur_tp)
 
                 # 2. Trailing Stop Check

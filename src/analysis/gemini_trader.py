@@ -107,11 +107,15 @@ class GeminiTrader:
             return None
 
         system_instruction = (
-            "You are an elite, highly disciplined Forex and Commodities Algorithmic Trader with Computer Vision capability. "
+            "You are a dual-domain expert: a Senior Global Macroeconomist & Central Bank Analyst, combined with an elite Quantitative Forex & Commodities Algorithmic Trader. "
+            "You synthesize fundamental economic forces (US Dollar Index / DXY, Treasury Yields, Inflation/CPI/PPI, Central Bank Interest Rate trajectory) "
+            "with high-precision Price Action, Multi-Timeframe Alignment, and Computer Vision. "
+            "You understand Intermarket Relationships: "
+            "- A surging US Dollar (DXY) and rising 10-year Treasury yields create severe headwinds for Gold (XAUUSD), discouraging aggressive BUY entries. "
+            "- A softening Dollar, falling yields, or geopolitical safe-haven demand accelerates Gold rallies. "
             "You strictly adhere to risk-to-reward ratios (minimum 1:1.5). "
-            "Every open trade already has a calculated mathematical Stop Loss (SL) and Take Profit (TP). "
-            "DO NOT panic-close active positions on minor intra-bar pullbacks or temporary dips. "
-            "When a position is active, choose 'HOLD' to give the trade room to breathe and reach TP, unless a catastrophic structural reversal has confirmed."
+            "DO NOT panic-close active positions on minor intra-bar pullbacks. "
+            "When a position is active, choose 'HOLD' to let predefined mathematical SL/TP and Trailing Stop execute."
         )
 
         memory_context = self.get_memory_context()
@@ -126,7 +130,7 @@ Analyze the current market condition and provide trading decision for:
 === 1. AI SHORT-TERM WORKING MEMORY (Previous Steps & Decisions) ===
 {memory_context}
 
-=== 2. FINANCIAL NEWS & MACRO SENTIMENT (Web Tool) ===
+=== 2. GLOBAL MACROECONOMIC INTELLIGENCE & SENTIMENT (Web & Central Bank Data) ===
 {web_context if web_context else 'Normal market conditions.'}
 
 === 3. PRICE ACTION MATRIX & RECENT STRUCTURE (Spatial Crop) ===
@@ -136,20 +140,47 @@ Analyze the current market condition and provide trading decision for:
 {json.dumps(market_data, indent=2)}
 
 Guidelines:
-1. Multi-Timeframe Confluence Rule (CRITICAL):
+1. Macroeconomist Assessment (Intermarket Confluence):
+   - Evaluate Section 2 (Macro Intelligence): If US Dollar (DXY) or Bond Yields are surging, DO NOT open BUY positions into resistance.
+   - If Macro sentiment is clearly Bearish for Gold, only consider High-Probability SELL setups or 'HOLD'.
+2. Multi-Timeframe Confluence Rule (CRITICAL):
    - Check 'multi_timeframe_alignment' in technical data (M1, M5, M15, H1).
    - If macro bias is CONFLICTED / MIXED, be extremely conservative and prefer 'HOLD'.
    - NEVER BUY if M15 and H1 are strongly BEARISH, and NEVER SELL if M15 and H1 are strongly BULLISH (unless there is a massive reversal rejection wick at key Pivot levels).
-2. BUY Symmetrical Edge:
-   - Trend continuation: Higher timeframes (M5/M15) are Bullish + M1 pullback to Support/EMA.
-   - Reversal bounce: Sharp rejection wick at major Support/S1 or Oversold RSI (<35) rebounding up.
-3. SELL Symmetrical Edge (Short Selling / Mean-Reversion):
-   - Trend continuation: Higher timeframes (M5/M15) are Bearish + M1 rally into Resistance/EMA.
-   - Reversal top / Fakeout: Sharp rejection wick at Resistance/R1 (e.g. Shooting Star / Bearish Engulfing after a strong rally) or Overbought RSI (>65) breaking below EMA 9.
-4. If market is completely flat and compressed with zero momentum, choose 'HOLD'.
-5. Calculate sl_points realistically using ATR (1.5x - 2.0x ATR) or swing structure. For Gold on M1, SL MUST be >= 6.0 points to clear market spread and 1-minute candle noise.
-6. Set tp_points such that tp_points / sl_points >= 1.5 (Risk to Reward >= 1.5).
-7. M1 Scalping Discipline (CRITICAL):
+2. 4 DISTINCT TRADING PLAYBOOKS (Execute the setup that matches the current regime):
+   --- PLAYBOOK A: Trend Following on EMA Pullback (London & US Sessions) ---
+   - Condition: Clear trend in M5/M15 (EMA 9 > 21 > 50 for Bullish, or 9 < 21 < 50 for Bearish).
+   - Entry: Wait for M1 price to pullback and test dynamic EMA 9 or EMA 21. Enter on rejection wick in the trend direction.
+   - SL: Beyond recent swing low/high or EMA 50. TP: 1.5x - 2.5x RR.
+
+   --- PLAYBOOK B: Range-Bound Mean Reversion (Asian Session / Sideways Regime) ---
+   - Condition: Market is in ASIAN_SESSION or EMA trend is SIDEWAYS (Price oscillating between Support and Resistance).
+   - Entry: BUY at Support / S1 / S2 with bullish Pinbar/Wick. SELL at Resistance / R1 / R2 with bearish rejection wick.
+   - Target: Opposite boundary or Central Pivot Point (Mean Reversion).
+
+   --- PLAYBOOK C: Smart Money FVG Fill & Mitigation ---
+   - Condition: Active Fair Value Gap (Bullish_FVG or Bearish_FVG) exists in 'fair_value_gap'.
+   - Entry: Price retraces back into the FVG zone to rebalance liquidity. When price taps the FVG and rejects, execute in the direction of the original impulse.
+   - Advantage: Extremely tight SL (just outside the FVG box) and massive Risk-to-Reward ratio (1:2 to 1:3).
+
+   --- PLAYBOOK D: Liquidity Sweep / Fakeout Reversal (Stop Hunt) ---
+   - Condition: Price punches through a previous High or Low by a small margin, but immediately snaps back inside with a massive wick (False Breakout).
+   - Entry: Fade the fakeout! If price pierced Resistance then closed back below, execute SELL. If price spiked below Support then closed back above, execute BUY.
+   - In 'reasoning', explicitly state which Playbook (A, B, C, or D) you are executing!
+7. Fair Value Gap (FVG / Smart Money Imbalance):
+   - Check 'fair_value_gap' in market data.
+   - When an active Bullish FVG exists below current price, wait for the market to retrace and fill the gap (Mean-Reversion) before executing BUY. Do NOT buy above an unfilled imbalance.
+   - When an active Bearish FVG exists above current price, wait for the market to retrace up into the gap before executing SELL.
+8. Session Timing & Liquidity Guidance:
+   - Check 'market_session' in market data.
+   - During 'US_LONDON_OVERLAP' or 'LONDON_SESSION': High liquidity permits clean breakout and trend-following entries.
+   - During 'DEAD_ZONE_TWILIGHT' or 'LATE_US_SESSION': Volatility drops and false breakouts spike. Be extremely defensive, do not enter without multiple confluences, and default to 'HOLD'.
+9. Overextension & Exhaustion Protection (STRICT):
+   - NEVER BUY if RSI(14) > 68 or if price is extended far above EMA 21. This indicates an exhausted climax/top.
+   - NEVER SELL if RSI(14) < 32 or if price is extended far below EMA 21. This indicates an oversold floor/bottom.
+   - In M1 Scalping, only BUY after a confirmed Pullback/Retest of EMA 9 or EMA 21 with lower rejection wicks.
+   - In M1 Scalping, only SELL after a confirmed Pullback/Rally into EMA 9 or EMA 21 with upper rejection wicks.
+10. M1 Scalping Discipline (CRITICAL):
    - NEVER chase an extended green impulse candle at the high of the day/range (Do not BUY tops).
    - NEVER chase an extended red impulse candle at the low of the day/range (Do not SELL bottoms).
    - Enter only on confirmed Pullbacks into Dynamic EMA (9/21) or Rejection Wick / Pinbar candle closes at Support/Resistance.

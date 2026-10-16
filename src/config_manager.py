@@ -20,6 +20,7 @@ class TradingConfig:
     history_bars: int
     min_confidence: float
     magic_number: int
+    symbols: List[str] = None
 
 @dataclass
 class RiskConfig:
@@ -71,9 +72,17 @@ class ConfigManager:
             model_name=parser.get("gemini", "model_name", fallback="gemini-3.8-flash")
         )
 
+        raw_symbols = parser.get("trading", "symbols", fallback="")
+        if not raw_symbols:
+            raw_symbols = parser.get("trading", "symbol", fallback="GOLD#")
+        symbols_list = [s.strip() for s in raw_symbols.split(",") if s.strip()]
+        if not symbols_list:
+            symbols_list = ["GOLD#"]
+
         trading_cfg = TradingConfig(
-            symbol=parser.get("trading", "symbol", fallback="XAUUSD"),
-            timeframe=parser.get("trading", "timeframe", fallback="M15"),
+            symbol=symbols_list[0],
+            symbols=symbols_list,
+            timeframe=parser.get("trading", "timeframe", fallback="M1"),
             history_bars=parser.getint("trading", "history_bars", fallback=40),
             min_confidence=parser.getfloat("trading", "min_confidence", fallback=0.75),
             magic_number=parser.getint("trading", "magic_number", fallback=888999)

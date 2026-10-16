@@ -54,6 +54,28 @@ class WebTools:
             return f"[INFO] Normal market conditions. Unable to fetch online headlines ({e})."
 
     @staticmethod
+    def get_macroeconomic_brief(symbol: str = "GOLD") -> str:
+        """
+        Global Macroeconomic Intelligence:
+        Searches central bank posture, US Dollar Index (DXY), Treasury yields, and inflation trends.
+        Provides high-level macro context directly to the AI Economist Persona.
+        """
+        queries = [
+            f"{symbol} price forecast DXY inflation fed rates",
+            "US Dollar 10-year Treasury yield gold impact today"
+        ]
+        briefs = []
+        for q in queries:
+            res = WebTools.search_news(q, max_results=2)
+            if res and "[INFO]" not in res:
+                briefs.append(res)
+
+        if not briefs:
+            return "Macroeconomic Context: DXY and US Treasury Yields are in a balanced equilibrium. Gold spot trades primarily on technical flow."
+
+        return " | ".join(briefs)
+
+    @staticmethod
     def detect_high_impact_news(news_text: str) -> tuple:
         """
         Analyzes news snippet string for red-folder high-impact keywords
