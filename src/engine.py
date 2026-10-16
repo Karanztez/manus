@@ -177,7 +177,10 @@ class TradingEngine:
 
                         # Capture Real HD Screenshot from MT5 & Focus Crop on Action Area
                         import os
-                        screenshot_file = os.path.join(os.getcwd(), f"chart_{symbol}_{timeframe}.png")
+                        img_dir = os.path.join(os.getcwd(), "img")
+                        os.makedirs(img_dir, exist_ok=True)
+                        clean_sym = symbol.replace("#", "")
+                        screenshot_file = os.path.join(img_dir, f"chart_{clean_sym}_{timeframe}.png")
                         has_screenshot = self.mt5.save_chart_screenshot(symbol, timeframe, screenshot_file, width=800, height=450)
                         if has_screenshot and os.path.exists(screenshot_file):
                             cropped_file = ChartTools.crop_chart_action_area(screenshot_file, focus_ratio=0.70)

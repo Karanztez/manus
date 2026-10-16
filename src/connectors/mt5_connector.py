@@ -154,6 +154,11 @@ class MT5Connector:
         if not HAS_MT5:
             return False
         try:
+            # Ensure parent directory exists
+            parent_dir = os.path.dirname(filename)
+            if parent_dir:
+                os.makedirs(parent_dir, exist_ok=True)
+
             tf = TIMEFRAME_MAP.get(timeframe_str.upper(), mt5.TIMEFRAME_M1)
             # Safe chart window handle
             chart_id = None
@@ -175,6 +180,11 @@ class MT5Connector:
                 if res and os.path.exists(filename):
                     logger.info(f"[CHART_SCREENSHOT] Saved MT5 HD chart to {filename}")
                     return True
+                else:
+                    last_err = mt5.last_error() if hasattr(mt5, "last_error") else "Unknown"
+                    logger.warning(f"[CHART_SCREENSHOT_WARN] chart_screen_shot returned False for chart_id {chart_id}: {last_err}")
+            else:
+                logger.warning(f"[CHART_SCREENSHOT_WARN] No active chart window found or opened for symbol {symbol}")
         except Exception as e:
             logger.warning(f"[CHART_SCREENSHOT_WARN] Could not capture screenshot: {e}")
         return False
