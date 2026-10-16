@@ -495,7 +495,7 @@ class MultiTimeframeScanner:
         Scans M1, M5, M15, and H1 timeframes in parallel from local MT5.
         Returns trend direction, EMA alignment, and RSI for each timeframe.
         """
-        from .analysis.indicators import calculate_ema, calculate_rsi
+        from .analysis.indicators import calculate_ema, calculate_rsi, calculate_macd
         results = {}
 
         tfs = ["M1", "M5", "M15", "H1"]
@@ -506,6 +506,7 @@ class MultiTimeframeScanner:
                     ema9 = float(calculate_ema(df['close'], 9).iloc[-1])
                     ema21 = float(calculate_ema(df['close'], 21).iloc[-1])
                     rsi = float(calculate_rsi(df['close'], 14).iloc[-1])
+                    macd_info = calculate_macd(df['close'])
                     cur = float(df['close'].iloc[-1])
 
                     bias = "BULLISH" if cur > ema9 > ema21 else ("BEARISH" if cur < ema9 < ema21 else "SIDEWAYS")
@@ -514,7 +515,9 @@ class MultiTimeframeScanner:
                         "close": round(cur, 2),
                         "ema_9": round(ema9, 2),
                         "ema_21": round(ema21, 2),
-                        "rsi": round(rsi, 2)
+                        "rsi": round(rsi, 2),
+                        "macd_momentum": macd_info.get("momentum", "NEUTRAL"),
+                        "macd_hist": macd_info.get("histogram", 0.0)
                     }
                 else:
                     results[tf] = {"trend": "UNKNOWN", "rsi": 50.0}

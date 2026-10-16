@@ -23,6 +23,34 @@ def calculate_rsi(series: pd.Series, period: int = 14) -> pd.Series:
     rsi = 100.0 - (100.0 / (1.0 + rs))
     return rsi.fillna(50.0)
 
+def calculate_macd(series: pd.Series, fast: int = 12, slow: int = 26, signal: int = 9) -> dict:
+    """
+    Calculates MACD Line, Signal Line, and Histogram (vectorized).
+    """
+    fast_ema = calculate_ema(series, fast)
+    slow_ema = calculate_ema(series, slow)
+    macd_line = fast_ema - slow_ema
+    signal_line = calculate_ema(macd_line, signal)
+    histogram = macd_line - signal_line
+    
+    latest_macd = float(macd_line.iloc[-1]) if not pd.isna(macd_line.iloc[-1]) else 0.0
+    latest_signal = float(signal_line.iloc[-1]) if not pd.isna(signal_line.iloc[-1]) else 0.0
+    latest_hist = float(histogram.iloc[-1]) if not pd.isna(histogram.iloc[-1]) else 0.0
+    prev_hist = float(histogram.iloc[-2]) if len(histogram) > 1 and not pd.isna(histogram.iloc[-2]) else 0.0
+
+    # Momentum assessment
+    crossover = "BULLISH_CROSS" if (latest_macd > latest_signal and latest_hist > 0 >= prev_hist) else (
+        "BEARISH_CROSS" if (latest_macd < latest_signal and latest_hist < 0 <= prev_hist) else "NONE"
+    )
+
+    return {
+        "macd_line": round(latest_macd, 3),
+        "signal_line": round(latest_signal, 3),
+        "histogram": round(latest_hist, 3),
+        "momentum": "BULLISH" if latest_macd > latest_signal else "BEARISH",
+        "crossover": crossover
+    }
+
 def calculate_atr(df: pd.DataFrame, period: int = 14) -> pd.Series:
     high = df['high']
     low = df['low']
@@ -214,6 +242,7 @@ def extract_market_features(df: pd.DataFrame) -> dict:
     fvg_data = detect_fair_value_gaps(df)
     ob_data = detect_order_blocks(df)
     bb_data = calculate_bollinger_bands(df['close'], period=20)
+    macd_data = calculate_macd(df['close'])
     session_data = get_market_session()
 
     # Liquidity Pool Highs & Lows (Equal Highs / Equal Lows)
@@ -233,6 +262,7 @@ def extract_market_features(df: pd.DataFrame) -> dict:
         "ema_21": round(float(latest['ema_21']), 2),
         "ema_50": round(float(latest['ema_50']), 2),
         "rsi_14": round(float(latest['rsi_14']), 2),
+        "macd": macd_data,
         "atr_14": round(float(latest['atr_14']), 2),
         "bollinger_bands": bb_data,
         "ema_trend": "BULLISH" if latest['ema_9'] > latest['ema_21'] > latest['ema_50'] else (
