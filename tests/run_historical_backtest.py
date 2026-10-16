@@ -153,6 +153,8 @@ def run_backtest_for_symbol(mt5: MT5Connector, risk: RiskManager, symbol: str, t
                 )
 
                 if not can_open:
+                    if total_signals <= 3:
+                        print(f"[{symbol} GATEKEEPER REJECT #{total_signals}] Reason: {reason}")
                     if "Exhaustion Guard" in reason:
                         exhaustion_rejections += 1
                 else:
@@ -216,8 +218,14 @@ def main():
         max_daily_drawdown_percent=config.risk.max_daily_drawdown_percent,
         max_trades_per_hour=config.risk.max_trades_per_hour,
         min_sl_points=config.risk.min_sl_points,
-        news_protection_enabled=False  # Disabled for historical offline bar iteration
+        news_protection_enabled=False
     )
+    # Reset live deal state for offline historical bar simulation
+    risk.consecutive_losses = 0
+    risk.last_loss_time = 0
+    risk.recent_trade_timestamps = []
+    risk.sync_deals_and_update_state = lambda: None  # No-op in offline historical backtest
+    risk.check_daily_drawdown = lambda: (True, "")   # Isolate strategy backtest from live broker balance swings
 
     symbols = config.trading.symbols if config.trading.symbols else [config.trading.symbol]
     results = []
