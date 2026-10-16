@@ -269,7 +269,14 @@ Guidelines:
                     except Exception as e:
                         logger.warning(f"[VISION_WARN] Failed to read chart image {image_path}: {e}")
 
-                models_to_try = [self.model_name, "gemini-3.8-flash", "gemini-flash-latest", "gemini-2.0-flash", "gemini-1.5-flash"]
+                models_to_try = [
+                    self.model_name,
+                    "gemini-3.7-flash",
+                    "gemini-3.5-flash",
+                    "gemini-flash-lite-latest",
+                    "gemini-3.5-flash-lite",
+                    "gemini-3.1-flash-lite",
+                ]
                 last_exc = None
                 response = None
                 for m in models_to_try:

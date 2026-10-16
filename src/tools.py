@@ -53,14 +53,92 @@ class WebTools:
             logger.warning(f"[WEB_SEARCH_WARN] Failed to fetch news: {e}")
             return f"[INFO] Normal market conditions. Unable to fetch online headlines ({e})."
 
-    _macro_cache = {}
-    _macro_cache_time = {}
+    _forexfactory_cache = []
+    _forexfactory_cache_time = 0.0
+
+    @staticmethod
+    def get_forexfactory_calendar(currency: str = "USD") -> list:
+        """
+        Directly fetches the economic calendar from ForexFactory's official JSON/API feed.
+        Parses high-impact (Red Folder) events with 15-minute memory caching.
+        """
+        import time
+        import json
+        from datetime import datetime, timezone
+
+        now = time.time()
+        # Cache calendar for 15 minutes
+        if WebTools._forexfactory_cache and (now - WebTools._forexfactory_cache_time < 900):
+            return WebTools._forexfactory_cache
+
+        url = "https://nfs.faireconomy.media/ff_calendar_thisweek.json"
+        try:
+            req = urllib.request.Request(
+                url,
+                headers={
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                    "Accept": "application/json"
+                }
+            )
+            with urllib.request.urlopen(req, timeout=4) as response:
+                events = json.loads(response.read().decode("utf-8"))
+
+            WebTools._forexfactory_cache = events
+            WebTools._forexfactory_cache_time = now
+            logger.info(f"[FOREXFACTORY] Successfully loaded {len(events)} events from ForexFactory calendar.")
+            return events
+        except Exception as e:
+            logger.warning(f"[FOREXFACTORY_WARN] Direct ForexFactory feed unreachable: {e}. Falling back to DuckDuckGo macro search.")
+            return WebTools._forexfactory_cache
+
+    @staticmethod
+    def check_forexfactory_high_impact(symbol: str, buffer_minutes: int = 30) -> tuple:
+        """
+        Checks if a High-Impact (Red Folder) economic release on ForexFactory is imminent
+        (within buffer_minutes before or after current time) matching the symbol's base/quote currency.
+        """
+        from datetime import datetime, timezone
+        import dateutil.parser
+
+        # Map common symbol currencies
+        currencies_to_watch = ["USD"]
+        if "EUR" in symbol:
+            currencies_to_watch.append("EUR")
+        if "JPY" in symbol:
+            currencies_to_watch.append("JPY")
+        if "GBP" in symbol:
+            currencies_to_watch.append("GBP")
+
+        events = WebTools.get_forexfactory_calendar()
+        if not events:
+            return False, ""
+
+        now_utc = datetime.now(timezone.utc)
+
+        for event in events:
+            impact = event.get("impact", "")
+            country = event.get("country", "")
+            title = event.get("title", "")
+            date_str = event.get("date", "")
+
+            # Filter for High Impact red folder events matching symbol currency
+            if impact.lower() == "high" and country in currencies_to_watch and date_str:
+                try:
+                    event_dt = dateutil.parser.isoparse(date_str)
+                    diff_seconds = abs((now_utc - event_dt).total_seconds())
+                    if diff_seconds <= (buffer_minutes * 60):
+                        time_desc = "imminent" if now_utc <= event_dt else "recently released"
+                        return True, f"ForexFactory High-Impact Event [{country} - {title}] is {time_desc} (Impact: HIGH)"
+                except Exception:
+                    continue
+
+        return False, ""
 
     @staticmethod
     def get_macroeconomic_brief(symbol: str = "GOLD") -> str:
         """
         Global Macroeconomic Intelligence:
-        Searches central bank posture, US Dollar Index (DXY), Treasury yields, and inflation trends.
+        Searches ForexFactory events + central bank posture, US Dollar Index (DXY), and Treasury yields.
         Caches results for 5 minutes to prevent network timeouts during rapid M1 candle evaluation.
         """
         import time
@@ -89,11 +167,18 @@ class WebTools:
         return result
 
     @staticmethod
-    def detect_high_impact_news(news_text: str) -> tuple:
+    def detect_high_impact_news(news_text: str, symbol: str = "") -> tuple:
         """
-        Analyzes news snippet string for red-folder high-impact keywords
+        Analyzes ForexFactory calendar directly, plus news snippet string for red-folder high-impact keywords
         such as CPI, PPI, Retail Sales, Non-Farm, FOMC, Fed Rate, Powell, etc.
         """
+        # 1. Direct ForexFactory Calendar Check
+        if symbol:
+            ff_active, ff_desc = WebTools.check_forexfactory_high_impact(symbol)
+            if ff_active:
+                return True, ff_desc
+
+        # 2. Text keyword analysis fallback
         if not news_text or "[INFO]" in news_text:
             return False, ""
 

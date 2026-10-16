@@ -133,7 +133,7 @@ class TradingEngine:
                         # News Shield & Macroeconomic Intelligence
                         web_news = WebTools.get_macroeconomic_brief(symbol)
                         if self.config.risk.news_protection_enabled:
-                            has_news, news_desc = WebTools.detect_high_impact_news(web_news)
+                            has_news, news_desc = WebTools.detect_high_impact_news(web_news, symbol=symbol)
                             if has_news:
                                 logger.warning(f"[NEWS_SHIELD_ACTIVE] {news_desc}. Pausing trade entry to avoid whipsaw.")
                                 continue
