@@ -87,7 +87,10 @@ class RiskManager:
             drawdown_pct = (drawdown_amount / self.initial_daily_balance) * 100.0
             if drawdown_pct >= self.max_daily_drawdown_percent:
                 msg = f"Daily Drawdown Breached: -{drawdown_pct:.2f}% (Limit: {self.max_daily_drawdown_percent:.2f}%). Trading stopped for the day."
-                logger.error(f"[CIRCUIT_BREAKER] {msg}")
+                now = time.time()
+                if not hasattr(self, '_last_dd_log') or (now - self._last_dd_log >= 300):
+                    self._last_dd_log = now
+                    logger.error(f"[CIRCUIT_BREAKER] {msg}")
                 return False, msg
 
         return True, ""
