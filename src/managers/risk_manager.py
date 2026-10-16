@@ -206,11 +206,32 @@ class RiskManager:
             return False
         return True
 
-    def enforce_min_sl(self, sl_points: float) -> float:
-        """Enforces minimum Stop Loss distance to prevent 1-minute noise triggers."""
-        if sl_points < self.min_sl_points:
-            logger.info(f"[SL_GUARD] Widening tight SL from {sl_points:.1f} to minimum safety floor {self.min_sl_points:.1f} pts.")
-            return self.min_sl_points
+    def enforce_min_sl(self, sl_points: float, symbol: str = "") -> float:
+        """
+        Enforces asset-appropriate minimum Stop Loss distance to prevent 1-minute noise triggers:
+        - GOLD / BTC: min_sl_points (e.g. 6.0 USD / 150 pts)
+        - JPY pairs (e.g. USDJPY, EURJPY): 0.15 - 0.25 (15-25 pips)
+        - Standard Forex (e.g. EURUSD, GBPUSD): 0.0015 - 0.0025 (15-25 pips)
+        """
+        symbol_upper = symbol.upper()
+        if "JPY" in symbol_upper:
+            floor = 0.20  # 20 pips on JPY (e.g. 158.00 -> 157.80)
+        elif any(f in symbol_upper for f in ["EUR", "GBP", "AUD", "NZD", "USD"]) and not ("GOLD" in symbol_upper or "XAU" in symbol_upper or "BTC" in symbol_upper):
+            floor = 0.0020  # 20 pips on Standard Forex (e.g. 1.1200 -> 1.1180)
+        elif any(c in symbol_upper for c in ["BTC", "ETH", "SOL"]):
+            floor = 150.0   # 150 USD on Bitcoin
+        else:
+            floor = self.min_sl_points  # 6.0 pts on Gold
+
+        if sl_points < floor:
+            logger.info(f"[SL_GUARD] [{symbol}] Widening tight SL from {sl_points:.4f} to minimum safety floor {floor:.4f} pts.")
+            return floor
+        elif sl_points > floor * 5:
+            # Prevent absurd wide SL from Gemini hallucinations (e.g. 6.0 on JPY which is 600 pips!)
+            clamped = floor * 2.5
+            logger.info(f"[SL_GUARD] [{symbol}] Clamping excessively wide SL from {sl_points:.4f} to realistic scalp ceiling {clamped:.4f} pts.")
+            return clamped
+
         return sl_points
 
     def record_trade_opened(self):

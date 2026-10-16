@@ -60,8 +60,8 @@ class OrderManager:
                 logger.info(f"Position for {signal.action} already open on {symbol}. No duplicate entry.")
                 return False
 
-            # Enforce minimum SL distance to protect against M1 market noise
-            sl_points = self.risk.enforce_min_sl(signal.sl_points)
+            # Enforce minimum SL distance to protect against M1 market noise (Asset-scaled)
+            sl_points = self.risk.enforce_min_sl(signal.sl_points, symbol=symbol)
             tp_points = signal.tp_points
             if sl_points > signal.sl_points and signal.sl_points > 0:
                 # Maintain min RR ratio if SL was widened
@@ -111,9 +111,11 @@ class OrderManager:
     def manage_trailing_and_breakeven(self, symbol: str, be_trigger_points: float = 1.8, trailing_step_points: float = 1.2):
         """
         Sub-Millisecond High-Frequency Risk & Profit Management for M1 Scalping:
-        1. Fast Break-Even: Locks entry + spread buffer as soon as profit reaches 1.8 points.
-        2. Tight Trailing Stop: Keeps SL close (1.2 points) to protect against sudden V-shape reversals.
-        3. Flash Reverse Guard: Detects rapid violent counter-spikes and instantly cuts or reverses without waiting.
+        Asset-aware calibration:
+        - Gold: 1.8 trigger, 1.2 trail (digits=2)
+        - JPY: 0.12 trigger (12 pips), 0.08 trail (8 pips) (digits=3)
+        - Standard Forex: 0.0012 trigger (12 pips), 0.0008 trail (8 pips) (digits=5)
+        - Crypto: 250 trigger, 150 trail (digits=2)
         """
         positions = self.get_open_positions(symbol)
         if not positions:
@@ -123,11 +125,28 @@ class OrderManager:
         if not tick:
             return
 
-        # Dynamic spread buffer calculation (Spread * 1.5 converted to price points)
-        spread_raw = getattr(tick, "spread", 20.0)
+        digits = getattr(tick, "digits", 2)
         point_size = getattr(tick, "point", 0.01)
+        spread_raw = getattr(tick, "spread", 20.0)
         spread_points = spread_raw * point_size
-        be_buffer = max(0.25, round(spread_points * 1.5, 2))
+
+        symbol_upper = symbol.upper()
+        if "JPY" in symbol_upper:
+            dyn_be_trigger = 0.10      # 10 pips on USDJPY
+            dyn_trailing_step = 0.06   # 6 pips trail
+            be_buffer = max(0.02, round(spread_points * 1.2, digits))
+        elif any(f in symbol_upper for f in ["EUR", "GBP", "AUD", "NZD", "USD"]) and not any(k in symbol_upper for k in ["GOLD", "XAU", "BTC", "ETH"]):
+            dyn_be_trigger = 0.0010    # 10 pips on EURUSD
+            dyn_trailing_step = 0.0006 # 6 pips trail
+            be_buffer = max(0.0002, round(spread_points * 1.2, digits))
+        elif any(c in symbol_upper for c in ["BTC", "ETH", "SOL"]):
+            dyn_be_trigger = 180.0
+            dyn_trailing_step = 100.0
+            be_buffer = max(10.0, round(spread_points * 1.5, digits))
+        else:
+            dyn_be_trigger = be_trigger_points
+            dyn_trailing_step = trailing_step_points
+            be_buffer = max(0.25, round(spread_points * 1.5, digits))
 
         for p in positions:
             ticket = getattr(p, "ticket", None)
@@ -144,25 +163,32 @@ class OrderManager:
             if pos_type == 0:  # BUY
                 profit_points = cur_price - price_open
                 # 1. Fast Break-Even Check: lock entry + dynamic spread buffer
-                if profit_points >= be_trigger_points and (cur_sl < price_open or cur_sl == 0.0):
-                    new_sl = round(price_open + be_buffer, 2)
-                    logger.info(f"[FAST_BE] Instant Break-even triggered for BUY #{ticket} at {new_sl} (Profit: +{profit_points:.2f})")
+                if profit_points >= dyn_be_trigger and (cur_sl < price_open or cur_sl == 0.0):
+                    new_sl = round(price_open + be_buffer, digits)
+                    logger.info(f"[FAST_BE] Instant Break-even triggered for BUY #{ticket} at {new_sl} (Profit: +{profit_points:.4f})")
                     self.mt5.modify_position(ticket, sl=new_sl, tp=cur_tp)
 
                 # 2. Tight Trailing Stop Check
-                elif profit_points >= (be_trigger_points + trailing_step_points):
-                    ideal_sl = round(cur_price - trailing_step_points, 2)
+                elif profit_points >= (dyn_be_trigger + dyn_trailing_step):
+                    ideal_sl = round(cur_price - dyn_trailing_step, digits)
                     if ideal_sl > cur_sl:
-                        logger.info(f"[TIGHT_TRAILING] Advancing SL for BUY #{ticket} to {ideal_sl} (+{profit_points:.2f})")
+                        logger.info(f"[TIGHT_TRAILING] Advancing SL for BUY #{ticket} to {ideal_sl} (+{profit_points:.4f})")
                         self.mt5.modify_position(ticket, sl=ideal_sl, tp=cur_tp)
 
             elif pos_type == 1:  # SELL
                 profit_points = price_open - cur_price
                 # 1. Fast Break-Even Check: lock entry - dynamic spread buffer
-                if profit_points >= be_trigger_points and (cur_sl > price_open or cur_sl == 0.0):
-                    new_sl = round(price_open - be_buffer, 2)
-                    logger.info(f"[FAST_BE] Instant Break-even triggered for SELL #{ticket} at {new_sl} (Profit: +{profit_points:.2f})")
+                if profit_points >= dyn_be_trigger and (cur_sl > price_open or cur_sl == 0.0):
+                    new_sl = round(price_open - be_buffer, digits)
+                    logger.info(f"[FAST_BE] Instant Break-even triggered for SELL #{ticket} at {new_sl} (Profit: +{profit_points:.4f})")
                     self.mt5.modify_position(ticket, sl=new_sl, tp=cur_tp)
+
+                # 2. Tight Trailing Stop Check
+                elif profit_points >= (dyn_be_trigger + dyn_trailing_step):
+                    ideal_sl = round(cur_price + dyn_trailing_step, digits)
+                    if ideal_sl < cur_sl or cur_sl == 0.0:
+                        logger.info(f"[TIGHT_TRAILING] Advancing SL for SELL #{ticket} to {ideal_sl} (+{profit_points:.4f})")
+                        self.mt5.modify_position(ticket, sl=ideal_sl, tp=cur_tp)
 
                 # 2. Tight Trailing Stop Check
                 elif profit_points >= (be_trigger_points + trailing_step_points):
