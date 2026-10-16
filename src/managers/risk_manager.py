@@ -94,23 +94,30 @@ class RiskManager:
 
     def check_loss_cooldown(self) -> Tuple[bool, str]:
         """Enforces a resting cooldown period after losing trades to prevent whipsaw revenge trading."""
+        now = time.time()
+        should_log = not hasattr(self, '_last_cooldown_log') or (now - self._last_cooldown_log >= 60)
+
         if self.consecutive_losses >= self.consecutive_loss_limit:
             # Extended cooldown for consecutive losses
             cooldown_seconds = self.loss_cooldown_minutes * 60 * 2
-            elapsed = time.time() - self.last_loss_time
+            elapsed = now - self.last_loss_time
             if elapsed < cooldown_seconds:
                 remaining_m = max(1, int((cooldown_seconds - elapsed) / 60))
                 msg = f"Consecutive Loss Circuit Breaker ({self.consecutive_losses} losses). Paused for {remaining_m} more minutes."
-                logger.warning(f"[COOLDOWN_ACTIVE] {msg}")
+                if should_log:
+                    self._last_cooldown_log = now
+                    logger.warning(f"[COOLDOWN_ACTIVE] {msg}")
                 return False, msg
 
         elif self.consecutive_losses > 0:
             cooldown_seconds = self.loss_cooldown_minutes * 60
-            elapsed = time.time() - self.last_loss_time
+            elapsed = now - self.last_loss_time
             if elapsed < cooldown_seconds:
                 remaining_m = max(1, int((cooldown_seconds - elapsed) / 60))
                 msg = f"Post-Loss Cooldown active. Paused for {remaining_m} more minutes to let market stabilize."
-                logger.warning(f"[COOLDOWN_ACTIVE] {msg}")
+                if should_log:
+                    self._last_cooldown_log = now
+                    logger.warning(f"[COOLDOWN_ACTIVE] {msg}")
                 return False, msg
 
         return True, ""

@@ -127,19 +127,7 @@ class TradingEngine:
                     if local_trigger_reason:
                         logger.info(f"[LOCAL_SCANNER_TRIGGER] [{symbol}] Reason: {local_trigger_reason} | Price: {latest_close}")
 
-                        # Check spread safety
-                        if not self.risk_manager.is_spread_safe(symbol):
-                            continue
-
-                        # News Shield & Macroeconomic Intelligence (Correlating Live Chart + Pre-News Calendar)
-                        web_news = WebTools.get_macroeconomic_brief(symbol, df=df)
-                        if self.config.risk.news_protection_enabled:
-                            has_news, news_desc = WebTools.detect_high_impact_news(web_news, symbol=symbol)
-                            if has_news:
-                                logger.warning(f"[NEWS_SHIELD_ACTIVE] {news_desc}. Pausing trade entry to avoid whipsaw.")
-                                continue
-
-                        # Extract Indicators & Math Tools
+                        # 4.1. Extract Technical Features & Indicators (0-25 ms)
                         features = extract_market_features(df)
                         features['pivot_points'] = pivots
 
@@ -147,7 +135,40 @@ class TradingEngine:
                         from .tools import MultiTimeframeScanner
                         mtf_data = MultiTimeframeScanner.get_multi_tf_confluence(self.mt5, symbol)
                         features['multi_timeframe_alignment'] = mtf_data
-                        logger.info(f"[MULTI_TF_SCAN] [{symbol}] Macro Bias: {mtf_data['macro_bias']}")
+                        macro_bias = mtf_data.get('macro_bias', 'NEUTRAL')
+                        logger.info(f"[MULTI_TF_SCAN] [{symbol}] Macro Bias: {macro_bias}")
+
+                        # 4.2. SMART GATEKEEPER (Zero Latency Pre-Filter - Protects API Quota)
+                        # Check if high-probability technical setup actually exists:
+                        # - Active SMC Order Block
+                        # - Unfilled Fair Value Gap (FVG)
+                        # - Bollinger Squeeze / Expansion (Bandwidth > 0.05 or breaking bands)
+                        # - Long Rejection Wick
+                        # - Major Pivot Breakout (R1/S1)
+                        has_ob = bool(features.get('active_ob'))
+                        has_fvg = bool(features.get('has_fvg'))
+                        has_wick = bool(features.get('rejection_wick'))
+                        bb_info = features.get('bollinger_bands', {})
+                        bb_width = bb_info.get('bb_bandwidth', 0.0)
+                        is_pivot_test = "Testing Pivot Boundary" in local_trigger_reason
+
+                        # If multi-timeframe is conflicted AND there is no clean SMC structure, skip calling Gemini
+                        # This cuts API calls by 80-90% during dead Asian sideways sessions
+                        if macro_bias == "CONFLICTED / MIXED" and not (has_ob or has_fvg or has_wick or is_pivot_test or bb_width > 0.15):
+                            logger.info(f"[SMART_GATEKEEPER] [{symbol}] Conflicted sideways session with no SMC setup (OB: {has_ob}, FVG: {has_fvg}, Wick: {has_wick}). Stand aside (Local HOLD - Zero API cost).")
+                            continue
+
+                        # Check spread safety
+                        if not self.risk_manager.is_spread_safe(symbol):
+                            continue
+
+                        # News Shield & Macroeconomic Intelligence (Cached & Real-time)
+                        web_news = WebTools.get_macroeconomic_brief(symbol, df=df)
+                        if self.config.risk.news_protection_enabled:
+                            has_news, news_desc = WebTools.detect_high_impact_news(web_news, symbol=symbol)
+                            if has_news:
+                                logger.warning(f"[NEWS_SHIELD_ACTIVE] {news_desc}. Pausing trade entry to avoid whipsaw.")
+                                continue
 
                         # Spatial Chart Matrix
                         chart_visual = ChartTools.render_ascii_chart(df, width=35, height=8)
@@ -176,7 +197,7 @@ class TradingEngine:
                                 symbol=symbol,
                                 signal=signal,
                                 min_confidence=self.config.trading.min_confidence,
-                                macro_bias=mtf_data['macro_bias'],
+                                macro_bias=macro_bias,
                                 market_features=features
                             )
 
