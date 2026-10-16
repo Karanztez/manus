@@ -40,6 +40,61 @@ def calculate_atr(df: pd.DataFrame, period: int = 14) -> pd.Series:
     atr = tr.rolling(window=period).mean()
     return atr
 
+def calculate_bollinger_bands(series: pd.Series, period: int = 20, num_std: float = 2.0) -> dict:
+    """Calculates Bollinger Bands for mean-reversion and volatility squeeze."""
+    sma = series.rolling(window=period).mean()
+    std = series.rolling(window=period).std()
+    upper = sma + (std * num_std)
+    lower = sma - (std * num_std)
+    bandwidth = (upper - lower) / sma * 100.0
+    return {
+        "bb_upper": round(float(upper.iloc[-1]), 2) if not pd.isna(upper.iloc[-1]) else 0.0,
+        "bb_middle": round(float(sma.iloc[-1]), 2) if not pd.isna(sma.iloc[-1]) else 0.0,
+        "bb_lower": round(float(lower.iloc[-1]), 2) if not pd.isna(lower.iloc[-1]) else 0.0,
+        "bb_bandwidth": round(float(bandwidth.iloc[-1]), 2) if not pd.isna(bandwidth.iloc[-1]) else 0.0
+    }
+
+def detect_order_blocks(df: pd.DataFrame) -> dict:
+    """
+    SMC Order Block (OB) Detection:
+    Bullish Order Block: The last bearish candle before a strong bullish impulse break.
+    Bearish Order Block: The last bullish candle before a strong bearish impulse break.
+    """
+    if len(df) < 10:
+        return {"active_ob": None}
+
+    bullish_ob = None
+    bearish_ob = None
+
+    for i in range(len(df) - 15, len(df) - 2):
+        if i < 2:
+            continue
+        c_prev = df.iloc[i]
+        c_next = df.iloc[i + 1]
+        c_after = df.iloc[i + 2]
+
+        # Strong Bullish Impulse breaking previous high
+        if c_prev['close'] < c_prev['open'] and c_next['close'] > c_next['open']:
+            if (c_after['close'] > c_prev['high']) and ((c_next['close'] - c_next['open']) > (c_prev['open'] - c_prev['close']) * 1.5):
+                bullish_ob = {
+                    "type": "BULLISH_ORDER_BLOCK",
+                    "high": round(float(c_prev['high']), 2),
+                    "low": round(float(c_prev['low']), 2),
+                    "mitigated": False
+                }
+        # Strong Bearish Impulse breaking previous low
+        elif c_prev['close'] > c_prev['open'] and c_next['close'] < c_next['open']:
+            if (c_after['close'] < c_prev['low']) and ((c_next['open'] - c_next['close']) > (c_prev['close'] - c_prev['open']) * 1.5):
+                bearish_ob = {
+                    "type": "BEARISH_ORDER_BLOCK",
+                    "high": round(float(c_prev['high']), 2),
+                    "low": round(float(c_prev['low']), 2),
+                    "mitigated": False
+                }
+
+    active = bullish_ob if bullish_ob else bearish_ob
+    return {"active_ob": active}
+
 def detect_fair_value_gaps(df: pd.DataFrame) -> dict:
     """
     Detects active Fair Value Gaps (FVG) / Imbalances in recent candles.
@@ -161,7 +216,19 @@ def extract_market_features(df: pd.DataFrame) -> dict:
         })
 
     fvg_data = detect_fair_value_gaps(df)
+    ob_data = detect_order_blocks(df)
+    bb_data = calculate_bollinger_bands(df['close'], period=20)
     session_data = get_market_session()
+
+    # Liquidity Pool Highs & Lows (Equal Highs / Equal Lows)
+    rolling_20_high = round(float(df['high'].tail(20).max()), 2)
+    rolling_20_low = round(float(df['low'].tail(20).min()), 2)
+    liquidity_pools = {
+        "buy_side_liquidity_bsl": rolling_20_high,
+        "sell_side_liquidity_ssl": rolling_20_low,
+        "current_distance_to_bsl": round(float(rolling_20_high - latest['close']), 2),
+        "current_distance_to_ssl": round(float(latest['close'] - rolling_20_low), 2)
+    }
 
     features = {
         "current_price": float(latest['close']),
@@ -171,14 +238,17 @@ def extract_market_features(df: pd.DataFrame) -> dict:
         "ema_50": round(float(latest['ema_50']), 2),
         "rsi_14": round(float(latest['rsi_14']), 2),
         "atr_14": round(float(latest['atr_14']), 2),
+        "bollinger_bands": bb_data,
         "ema_trend": "BULLISH" if latest['ema_9'] > latest['ema_21'] > latest['ema_50'] else (
             "BEARISH" if latest['ema_9'] < latest['ema_21'] < latest['ema_50'] else "SIDEWAYS"
         ),
         "market_session": session_data,
         "fair_value_gap": fvg_data,
+        "order_block": ob_data,
+        "liquidity_pools": liquidity_pools,
         "recent_candles": recent_candles,
-        "support_level": round(float(df['low'].tail(20).min()), 2),
-        "resistance_level": round(float(df['high'].tail(20).max()), 2),
+        "support_level": rolling_20_low,
+        "resistance_level": rolling_20_high,
     }
 
     return features
