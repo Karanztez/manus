@@ -55,12 +55,27 @@ except Exception:
             return json.dumps(self.__dict__)
 
 class GeminiTrader:
-    def __init__(self, api_keys: List[str], model_name: str = "gemini-3.8-flash"):
-        self.api_keys = [k for k in api_keys if k and k != "YOUR_GEMINI_API_KEY"]
+    def __init__(self, api_keys: List[str], model_name: str = "gemini-flash-latest"):
+        self.api_keys = [k.strip() for k in api_keys if k and k.strip() and k.strip() != "YOUR_GEMINI_API_KEY"]
         self.current_key_index = 0
         self.model_name = model_name
         self.memory: List[str] = []  # Rolling contextual working memory (last 5 decisions/scans)
-        self._init_client()
+        # Per-key state tracking: cooldown down_until timestamp, failure count, last_error
+        self._key_states = {
+            k: {"down_until": 0.0, "failures": 0, "last_error": ""}
+            for k in self.api_keys
+        }
+        self.clients = {}
+        self._init_all_clients()
+
+    def _init_all_clients(self):
+        """Pre-initializes genai.Client for each key in pool."""
+        self.clients.clear()
+        for idx, key in enumerate(self.api_keys):
+            try:
+                self.clients[key] = genai.Client(api_key=key)
+            except Exception as e:
+                logger.warning(f"[KEY_INIT_WARN] Failed to instantiate client for key index {idx + 1}: {e}")
 
     def record_memory(self, entry: str):
         """Maintains rolling fast memory buffer of recent market structure events."""
@@ -74,27 +89,59 @@ class GeminiTrader:
             return "No previous decisions recorded yet (Initial cycle)."
         return "\n".join(f"- {m}" for m in self.memory)
 
-    def _init_client(self):
-        if not self.api_keys:
-            self.client = None
-            return
-        current_key = self.api_keys[self.current_key_index]
-        masked = current_key[:6] + "..." + current_key[-4:]
-        logger.info(f"[KEY_INIT] Using Gemini API Key index {self.current_key_index + 1}/{len(self.api_keys)} ({masked})")
-        self.client = genai.Client(api_key=current_key)
+    def _get_ordered_keys(self) -> List[str]:
+        """
+        Orders keys with Round-Robin distribution across calls while prioritizing healthy keys
+        over keys currently cooling down (inspired by disbotai pool router).
+        """
+        import time
+        now = time.monotonic()
+        healthy = [k for k in self.api_keys if self._key_states[k]["down_until"] <= now]
+        cooling = [
+            k for k in self.api_keys 
+            if self._key_states[k]["down_until"] > now and "401" not in self._key_states[k]["last_error"]
+        ]
 
-    def _rotate_key(self) -> bool:
-        """Rotates to the next available API key in the pool."""
-        if len(self.api_keys) <= 1:
-            logger.warning("[KEY_ROTATION] No alternative keys available in pool.")
-            return False
+        # If all healthy keys are exhausted, fallback to usable cooling keys (soonest to expire first)
+        if not healthy:
+            cooling.sort(key=lambda k: self._key_states[k]["down_until"])
+            return cooling
 
-        self.current_key_index = (self.current_key_index + 1) % len(self.api_keys)
-        new_key = self.api_keys[self.current_key_index]
-        masked = new_key[:6] + "..." + new_key[-4:]
-        logger.info(f"[KEY_ROTATED] Switched to Key index {self.current_key_index + 1}/{len(self.api_keys)} ({masked})")
-        self._init_client()
-        return True
+        # Round-Robin shift so we don't hammer the exact same key first every cycle
+        start_idx = self.current_key_index % len(healthy)
+        self.current_key_index = (self.current_key_index + 1) % len(healthy)
+        ordered_healthy = healthy[start_idx:] + healthy[:start_idx]
+        return ordered_healthy + cooling
+
+    def _record_key_failure(self, key: str, reason: str):
+        """Quarantines key with adaptive cooldown depending on error type."""
+        import time
+        state = self._key_states[key]
+        state["failures"] += 1
+        state["last_error"] = str(reason)[:100]
+        masked = key[:6] + "..." + key[-4:] if len(key) >= 10 else "***"
+
+        err_lower = str(reason).lower()
+        if "401" in err_lower or "403" in err_lower or "api_key_invalid" in err_lower:
+            # Permanent quarantine (24 hours) for invalid keys
+            state["down_until"] = time.monotonic() + 86400.0
+            logger.error(f"[KEY_QUARANTINE_PERMANENT] Key ({masked}) invalid or unauthorized: {reason}. Quarantined for 24h.")
+        elif "429" in err_lower or "resource_exhausted" in err_lower or "quota" in err_lower:
+            # Quota or rate-limit: 60s cooldown if per-minute rate limit, 300s if daily limit
+            cooldown = 300.0 if "daily" in err_lower or "day" in err_lower else 60.0
+            state["down_until"] = time.monotonic() + cooldown
+            logger.warning(f"[KEY_QUARANTINE_429] Key ({masked}) hit quota/rate limit: {reason}. Cooldown {cooldown}s -> Rotating key pool.")
+        else:
+            # Temporary network / server outage (503 / timeout)
+            cooldown = 30.0
+            state["down_until"] = time.monotonic() + cooldown
+            logger.warning(f"[KEY_QUARANTINE_TEMP] Key ({masked}) failed with {reason}. Cooldown {cooldown}s.")
+
+    def _record_key_success(self, key: str):
+        """Resets failures on successful call."""
+        if key in self._key_states:
+            self._key_states[key]["failures"] = 0
+            self._key_states[key]["last_error"] = ""
 
     def analyze(self, symbol: str, timeframe: str, market_data: dict, current_position: Optional[str] = None, chart_visual: str = "", web_context: str = "", local_scan_note: str = "", image_path: Optional[str] = None) -> Optional[TradeSignal]:
         """
@@ -187,8 +234,22 @@ Guidelines:
    - In choppy, range-bound whipsaws or breaking news, choose 'HOLD'.
 """
 
-        max_attempts = len(self.api_keys)
-        for attempt in range(max_attempts):
+        ordered_keys = self._get_ordered_keys()
+        if not ordered_keys:
+            logger.error("[ERROR] No valid Gemini API keys configured or available.")
+            return None
+
+        for key_idx, current_key in enumerate(ordered_keys):
+            client = self.clients.get(current_key)
+            if client is None:
+                try:
+                    client = genai.Client(api_key=current_key)
+                    self.clients[current_key] = client
+                except Exception as e:
+                    self._record_key_failure(current_key, str(e))
+                    continue
+
+            masked = current_key[:6] + "..." + current_key[-4:] if len(current_key) >= 10 else "***"
             try:
                 gen_config = {
                     "system_instruction": system_instruction,
@@ -213,7 +274,7 @@ Guidelines:
                 response = None
                 for m in models_to_try:
                     try:
-                        response = self.client.models.generate_content(
+                        response = client.models.generate_content(
                             model=m,
                             contents=contents_payload,
                             config=types.GenerateContentConfig(**gen_config),
@@ -224,9 +285,9 @@ Guidelines:
                         err_str = str(err)
                         if "503" in err_str or "UNAVAILABLE" in err_str:
                             continue
-                        # If specific model exhausted its daily 500 free tier limit, fallback to another model
-                        if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
-                            logger.warning(f"[MODEL_QUOTA_FALLBACK] Model {m} quota exhausted (429). Falling back to next available model...")
+                        # If specific model exhausted its daily limit, fallback to next model
+                        if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str or "quota" in err_str.lower():
+                            logger.warning(f"[MODEL_QUOTA_FALLBACK] Model {m} quota exhausted (429) on key ({masked}). Falling back to next model...")
                             continue
                         raise err
 
@@ -241,24 +302,20 @@ Guidelines:
                     data = json.loads(response.text)
                     signal = TradeSignal(**data)
                 
+                # Success: reset failure counts and cooldown for this key
+                self._record_key_success(current_key)
+
                 # Record to working memory for sequential continuity
                 mem_entry = f"[{timeframe}] Action: {signal.action} (Conf: {signal.confidence:.2f}) | {signal.reasoning[:120]}..."
                 self.record_memory(mem_entry)
 
-                logger.info(f"[ANALYSIS] {symbol} {timeframe} | Decision: {signal.action} (Confidence: {signal.confidence:.2f}) | {signal.reasoning}")
+                logger.info(f"[ANALYSIS] [{symbol} {timeframe}] Key ({masked}) | Decision: {signal.action} (Confidence: {signal.confidence:.2f}) | {signal.reasoning}")
                 return signal
             except Exception as e:
                 err_msg = str(e)
-                logger.warning(f"[API_WARN] Key index {self.current_key_index + 1} encountered error: {err_msg}")
-                # Check for rate limit, quota exhaustion or permission error
-                if any(err in err_msg.lower() for err in ["429", "quota", "resource_exhausted", "limit", "invalid"]):
-                    logger.warning("[QUOTA_EXHAUSTED] Rate limit or quota reached. Triggering automatic key rotation...")
-                    if not self._rotate_key():
-                        break
-                else:
-                    # Generic error fallback rotation
-                    if not self._rotate_key():
-                        break
+                logger.warning(f"[API_WARN] Key ({masked}) encountered error: {err_msg}")
+                self._record_key_failure(current_key, err_msg)
+                continue
 
-        logger.error("[ERROR] All Gemini API keys exhausted or failed.")
+        logger.error("[ERROR] All Gemini API keys exhausted or in cooldown.")
         return None
