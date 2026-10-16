@@ -131,8 +131,8 @@ class TradingEngine:
                         if not self.risk_manager.is_spread_safe(symbol):
                             continue
 
-                        # News Shield & Macroeconomic Intelligence
-                        web_news = WebTools.get_macroeconomic_brief(symbol)
+                        # News Shield & Macroeconomic Intelligence (Correlating Live Chart + Pre-News Calendar)
+                        web_news = WebTools.get_macroeconomic_brief(symbol, df=df)
                         if self.config.risk.news_protection_enabled:
                             has_news, news_desc = WebTools.detect_high_impact_news(web_news, symbol=symbol)
                             if has_news:

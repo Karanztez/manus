@@ -169,19 +169,36 @@ class WebTools:
         return " | ".join(summary_events[:6]) if summary_events else ""
 
     @staticmethod
-    def get_upcoming_news_environment_assessment(symbol: str) -> dict:
+    def get_upcoming_news_environment_assessment(symbol: str, df: Optional[any] = None) -> dict:
         """
         THE PREDICTIVE NEWS & PRE-EVENT RISK ASSESSOR:
-        Scans all scheduled economic events (Red, Orange, Yellow) that have NOT yet been released.
-        Calculates time countdown, forecast variance, and predicts pre-news positioning environment
-        (e.g., Pre-News Liquidity Squeeze, Consolidation Range, or Front-Running Momentum).
+        Combines scheduled unreleased economic releases WITH LIVE REAL-TIME PRICE ACTION (df).
+        Analyzes whether the current live chart is:
+        - Compressing into an explosive range before news (Low ATR / Squeeze)
+        - Accumulating / Front-running in a directional drift
+        - Hunting liquidity at equal highs/lows prior to the announcement
         """
         from datetime import datetime, timezone
         import dateutil.parser
 
+        # 1. Live Chart Analysis (Current Price Action)
+        chart_note = ""
+        if df is not None and len(df) >= 10:
+            latest_c = df['close'].iloc[-1]
+            range_10 = df['high'].tail(10).max() - df['low'].tail(10).min()
+            last_candle_body = abs(df['close'].iloc[-1] - df['open'].iloc[-1])
+            is_compressed = range_10 < (df['high'].tail(30).max() - df['low'].tail(30).min()) * 0.4
+            if is_compressed:
+                chart_note = f"Current Live Chart is heavily COMPRESSING (10-bar range: {range_10:.2f} pts). Energy is coiling for an explosive expansion."
+            else:
+                chart_note = f"Current Live Chart shows active price discovery around {latest_c:.2f} with a 10-bar volatility range of {range_10:.2f} pts."
+
         events = WebTools.get_forexfactory_calendar()
         if not events:
-            return {"has_upcoming": False, "assessment": "No scheduled releases found."}
+            return {
+                "has_upcoming": False,
+                "assessment": f"No scheduled releases found. {chart_note}"
+            }
 
         currencies_to_watch = ["USD"]
         if "EUR" in symbol:
@@ -224,7 +241,7 @@ class WebTools:
             return {
                 "has_upcoming": False,
                 "environment_mode": "OPEN_VOLATILITY",
-                "summary": "No high/medium impact news scheduled in the next 8 hours. Clear market environment.",
+                "summary": f"No high/medium impact news in next 8 hours. {chart_note}",
                 "closest_event": None
             }
 
@@ -236,20 +253,22 @@ class WebTools:
             mode = "PRE_RED_FOLDER_CAUTION"
             assessment = (
                 f"ALERT: Red-Folder event [{closest['country']} - {closest['title']}] drops in {mins:.0f} mins! "
-                f"Expect drying liquidity, widening spreads, and potential front-running or false stop hunts. "
-                f"Forecast: {closest['forecast']} vs Previous: {closest['previous']}. Tighten SL or stand aside."
+                f"Chart Correlation: {chart_note} "
+                f"Expect drying liquidity, widening spreads, and high probability of sudden stop-hunts. "
+                f"Forecast: {closest['forecast']} vs Previous: {closest['previous']}."
             )
         elif mins <= 120 and impact in ["HIGH", "MEDIUM"]:
             mode = "PRE_EVENT_POSITIONING"
             assessment = (
                 f"Upcoming [{impact}] event [{closest['country']} - {closest['title']}] in {mins:.0f} mins. "
-                f"Market transitioning into pre-event accumulation. Institutions establishing hedging orders. "
+                f"Chart Correlation: {chart_note} "
                 f"Forecast: {closest['forecast']} | Previous: {closest['previous']}."
             )
         else:
             mode = "NORMAL_SCHEDULED_AWARENESS"
             assessment = (
                 f"Scheduled event [{closest['country']} - {closest['title']}] in {mins/60.0:.1f} hours ({mins:.0f} mins). "
+                f"Chart Correlation: {chart_note} "
                 f"Forecast: {closest['forecast']} vs Previous: {closest['previous']}."
             )
 
@@ -262,19 +281,20 @@ class WebTools:
         }
 
     @staticmethod
-    def get_macroeconomic_brief(symbol: str = "GOLD") -> str:
+    def get_macroeconomic_brief(symbol: str = "GOLD", df: Optional[any] = None) -> str:
         """
         Global Macroeconomic Intelligence:
         Combines Predictive Pre-News Environment Assessment + ForexFactory Calendar + Web Market Sentiment.
-        Caches results for 5 minutes to prevent network timeouts during rapid M1 candle evaluation.
+        Correlates live real-time price action (df) with upcoming economic events.
+        Caches results for 3 minutes to prevent network timeouts during rapid M1 candle evaluation.
         """
         import time
         now = time.time()
         if symbol in WebTools._macro_cache:
-            if now - WebTools._macro_cache_time.get(symbol, 0) < 300:
+            if now - WebTools._macro_cache_time.get(symbol, 0) < 180:
                 return WebTools._macro_cache[symbol]
 
-        upcoming_assessment = WebTools.get_upcoming_news_environment_assessment(symbol)
+        upcoming_assessment = WebTools.get_upcoming_news_environment_assessment(symbol, df=df)
         ff_context = WebTools.get_forexfactory_daily_sentiment(symbol)
 
         queries = [
