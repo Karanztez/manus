@@ -266,15 +266,29 @@ class RiskManager:
             if not safe:
                 return False, msg
 
-        # 6. Overextension / Exhaustion Check (Prevent Chasing Tops/Bottoms)
+        # 6. Multi-Timeframe Overextension / Exhaustion Check (H1 -> M15 -> M5 -> M1)
         if market_features:
+            mtf_info = market_features.get("multi_timeframe_alignment", {})
+            macro_exhaustion = mtf_info.get("macro_exhaustion", "")
             rsi = market_features.get("rsi_14", 50.0)
+
+            # Rule A: If Macro (H1 or M15) is Overbought, forbid BUY on M1 even if M1 has dipped slightly
+            if action == "BUY" and "MACRO_OVERBOUGHT" in macro_exhaustion:
+                logger.warning(f"[MACRO_EXHAUSTION_GUARD] Rejecting BUY: Higher TFs (H1/M15) are Overbought. High probability of major dump.")
+                return False, "Macro Exhaustion Guard: Higher timeframes (H1/M15) are Overbought. Do not BUY tops."
+
+            # Rule B: If Macro (H1 or M15) is Oversold, forbid SELL on M1
+            if action == "SELL" and "MACRO_OVERSOLD" in macro_exhaustion:
+                logger.warning(f"[MACRO_EXHAUSTION_GUARD] Rejecting SELL: Higher TFs (H1/M15) are Oversold. High probability of strong bounce.")
+                return False, "Macro Exhaustion Guard: Higher timeframes (H1/M15) are Oversold. Do not SELL bottoms."
+
+            # Rule C: Local M1 exhaustion floor / ceiling
             if action == "BUY" and rsi > 70.0:
-                logger.warning(f"[EXHAUSTION_GUARD] Rejecting BUY: RSI-14 is {rsi:.1f} (Overbought climax). Do not chase tops.")
-                return False, f"Exhaustion Guard: RSI-14 ({rsi:.1f}) is Overbought. Wait for pullback."
+                logger.warning(f"[EXHAUSTION_GUARD] Rejecting BUY: M1 RSI-14 is {rsi:.1f} (Overbought climax). Do not chase tops.")
+                return False, f"Exhaustion Guard: M1 RSI-14 ({rsi:.1f}) is Overbought. Wait for pullback."
             elif action == "SELL" and rsi < 30.0:
-                logger.warning(f"[EXHAUSTION_GUARD] Rejecting SELL: RSI-14 is {rsi:.1f} (Oversold floor). Do not chase bottoms.")
-                return False, f"Exhaustion Guard: RSI-14 ({rsi:.1f}) is Oversold. Wait for pullback."
+                logger.warning(f"[EXHAUSTION_GUARD] Rejecting SELL: M1 RSI-14 is {rsi:.1f} (Oversold floor). Do not chase bottoms.")
+                return False, f"Exhaustion Guard: M1 RSI-14 ({rsi:.1f}) is Oversold. Wait for pullback."
 
         # 7. Risk-to-Reward Ratio
         if not self.validate_rr_ratio(sl_points, tp_points):

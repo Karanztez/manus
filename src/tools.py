@@ -510,19 +510,35 @@ class MultiTimeframeScanner:
                     cur = float(df['close'].iloc[-1])
 
                     bias = "BULLISH" if cur > ema9 > ema21 else ("BEARISH" if cur < ema9 < ema21 else "SIDEWAYS")
+                    ob_os = "OVERBOUGHT" if rsi >= 70.0 else ("OVERSOLD" if rsi <= 30.0 else ("BULLISH_ZONE" if rsi >= 55.0 else ("BEARISH_ZONE" if rsi <= 45.0 else "NEUTRAL")))
+
                     results[tf] = {
                         "trend": bias,
                         "close": round(cur, 2),
                         "ema_9": round(ema9, 2),
                         "ema_21": round(ema21, 2),
                         "rsi": round(rsi, 2),
+                        "exhaustion_state": ob_os,
                         "macd_momentum": macd_info.get("momentum", "NEUTRAL"),
                         "macd_hist": macd_info.get("histogram", 0.0)
                     }
                 else:
-                    results[tf] = {"trend": "UNKNOWN", "rsi": 50.0}
+                    results[tf] = {"trend": "UNKNOWN", "rsi": 50.0, "exhaustion_state": "NEUTRAL"}
             except Exception as e:
-                results[tf] = {"trend": "ERROR", "rsi": 50.0}
+                results[tf] = {"trend": "ERROR", "rsi": 50.0, "exhaustion_state": "NEUTRAL"}
+
+        # Macro Overbought / Oversold cascade assessment (H1 -> M15 -> M5 -> M1)
+        h1_state = results.get("H1", {}).get("exhaustion_state", "NEUTRAL")
+        m15_state = results.get("M15", {}).get("exhaustion_state", "NEUTRAL")
+        m1_state = results.get("M1", {}).get("exhaustion_state", "NEUTRAL")
+
+        # Global exhaustion verdict
+        if h1_state == "OVERBOUGHT" or m15_state == "OVERBOUGHT":
+            macro_exhaustion = "MACRO_OVERBOUGHT (High risk to BUY. Higher TFs exhausted. Look for SELL retest or pullback)"
+        elif h1_state == "OVERSOLD" or m15_state == "OVERSOLD":
+            macro_exhaustion = "MACRO_OVERSOLD (High risk to SHORT. Higher TFs depleted. Look for BUY bounce)"
+        else:
+            macro_exhaustion = "BALANCED (Room to expand in both directions)"
 
         # Calculate macro alignment score
         bullish_count = sum(1 for v in results.values() if v.get("trend") == "BULLISH")
@@ -537,5 +553,6 @@ class MultiTimeframeScanner:
 
         return {
             "macro_bias": macro_bias,
+            "macro_exhaustion": macro_exhaustion,
             "details": results
         }

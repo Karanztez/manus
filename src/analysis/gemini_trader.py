@@ -245,11 +245,11 @@ INSTITUTIONAL COUNCIL EVALUATION GUIDELINES:
    - Check 'market_session' in market data.
    - During 'US_LONDON_OVERLAP' or 'LONDON_SESSION': High liquidity permits clean breakout and trend-following entries.
    - During 'DEAD_ZONE_TWILIGHT' or 'LATE_US_SESSION': Volatility drops and false breakouts spike. Be extremely defensive, do not enter without multiple confluences, and default to 'HOLD'.
-6. Overextension & Exhaustion Protection (STRICT):
-   - NEVER BUY if RSI(14) > 68 or if price is extended far above EMA 21. This indicates an exhausted climax/top.
-   - NEVER SELL if RSI(14) < 32 or if price is extended far below EMA 21. This indicates an oversold floor/bottom.
-   - In M1 Scalping, only BUY after a confirmed Pullback/Retest of EMA 9 or EMA 21 with lower rejection wicks.
-   - In M1 Scalping, only SELL after a confirmed Pullback/Rally into EMA 9 or EMA 21 with upper rejection wicks.
+6. Multi-Timeframe Overbought / Oversold Cascading Hierarchy (H1 -> M15 -> M5 -> M1):
+   - Check 'multi_timeframe_alignment.macro_exhaustion' and 'exhaustion_state' of H1/M15/M5/M1.
+   - If H1 or M15 is OVERBOUGHT (RSI >= 70): Strictly FORBID any BUY on M1! Higher timeframe buyers are exhausted and smart money is preparing to distribute/dump. Only look for SELL rejection setups or 'HOLD'.
+   - If H1 or M15 is OVERSOLD (RSI <= 30): Strictly FORBID any SELL on M1! Higher timeframe sellers are depleted and smart money is accumulating. Only look for BUY reversal sweeps or 'HOLD'.
+   - Local M1 Scalping Exhaustion: Even if macro is balanced, NEVER BUY if M1 RSI(14) > 68 or extended far above EMA 21 (Wait for pullback to EMA 9/21). NEVER SELL if M1 RSI(14) < 32 or extended far below EMA 21.
 7. M1 Scalping Discipline (CRITICAL):
    - NEVER chase an extended green impulse candle at the high of the day/range (Do not BUY tops).
    - NEVER chase an extended red impulse candle at the low of the day/range (Do not SELL bottoms).
