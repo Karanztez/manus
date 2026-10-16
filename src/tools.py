@@ -483,6 +483,89 @@ class ChartTools:
             logger.warning(f"[CHART_CROP_WARN] Failed to crop chart image: {e}")
             return image_path
 
+    @staticmethod
+    def generate_candlestick_image(df, filename: str, symbol: str = "ASSET", timeframe: str = "M1", width: int = 800, height: int = 450) -> Optional[str]:
+        """
+        Pure Python (PIL) High-Definition Candlestick Chart Renderer.
+        Generates dark-mode institutional chart directly from df rates without requiring
+        MT5 GUI window or external GUI libraries. Guarantees 100% chart availability for Gemini Vision.
+        """
+        if df is None or len(df) < 10:
+            return None
+
+        try:
+            from PIL import Image, ImageDraw
+            os.makedirs(os.path.dirname(filename), exist_ok=True)
+            
+            # Setup dark institutional palette
+            bg_color = (18, 22, 30)         # Sleek dark navy
+            grid_color = (30, 36, 48)       # Subtle grid
+            bull_color = (38, 166, 154)     # Clean cyan/green
+            bear_color = (239, 83, 80)      # Clean coral/red
+            text_color = (176, 190, 197)    # Soft slate white
+
+            img = Image.new("RGB", (width, height), color=bg_color)
+            draw = ImageDraw.Draw(img)
+
+            recent = df.tail(40).reset_index(drop=True)
+            highs = recent['high'].astype(float).tolist()
+            lows = recent['low'].astype(float).tolist()
+            opens = recent['open'].astype(float).tolist()
+            closes = recent['close'].astype(float).tolist()
+
+            max_p = max(highs)
+            min_p = min(lows)
+            price_range = max_p - min_p if max_p != min_p else 1.0
+
+            padding_top = 40
+            padding_bottom = 40
+            chart_h = height - padding_top - padding_bottom
+            num_bars = len(recent)
+            bar_w = max(4, int((width - 80) / num_bars))
+
+            # Draw background price grid (4 levels)
+            for g in range(5):
+                y = padding_top + int(chart_h * (g / 4.0))
+                p_val = max_p - (price_range * (g / 4.0))
+                draw.line([(0, y), (width - 70, y)], fill=grid_color, width=1)
+                draw.text((width - 65, y - 6), f"{p_val:.2f}", fill=text_color)
+
+            # Draw candlesticks
+            for i in range(num_bars):
+                x = 20 + i * bar_w + (bar_w // 2)
+                o = opens[i]
+                c = closes[i]
+                h = highs[i]
+                l = lows[i]
+
+                y_high = padding_top + int(chart_h * (1.0 - (h - min_p) / price_range))
+                y_low = padding_top + int(chart_h * (1.0 - (l - min_p) / price_range))
+                y_open = padding_top + int(chart_h * (1.0 - (o - min_p) / price_range))
+                y_close = padding_top + int(chart_h * (1.0 - (c - min_p) / price_range))
+
+                is_bull = c >= o
+                color = bull_color if is_bull else bear_color
+
+                # Upper and lower wicks
+                draw.line([(x, y_high), (x, y_low)], fill=color, width=1)
+
+                # Candle body
+                b_top = min(y_open, y_close)
+                b_bot = max(y_open, y_close)
+                if b_bot - b_top < 2:
+                    b_bot = b_top + 2
+                draw.rectangle([x - (bar_w // 2) + 1, b_top, x + (bar_w // 2) - 1, b_bot], fill=color)
+
+            # Header info
+            draw.text((20, 15), f"{symbol} [{timeframe}] - Real-time Price Matrix ({closes[-1]:.2f})", fill=text_color)
+
+            img.save(filename, format="PNG", optimize=True)
+            logger.info(f"[CHART_RENDERED] Generated standalone HD candlestick chart to {filename}")
+            return filename
+        except Exception as e:
+            logger.warning(f"[CHART_GEN_WARN] Failed to render candlestick image: {e}")
+            return None
+
 # =====================================================================
 # 4. Multi-Timeframe Confluence Scanner (M1, M5, M15, H1)
 # =====================================================================

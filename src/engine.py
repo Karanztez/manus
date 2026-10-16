@@ -182,7 +182,12 @@ class TradingEngine:
                         clean_sym = symbol.replace("#", "")
                         screenshot_file = os.path.join(img_dir, f"chart_{clean_sym}_{timeframe}.png")
                         has_screenshot = self.mt5.save_chart_screenshot(symbol, timeframe, screenshot_file, width=800, height=450)
-                        if has_screenshot and os.path.exists(screenshot_file):
+                        
+                        if not (has_screenshot and os.path.exists(screenshot_file)):
+                            # Standalone Fallback: Render HD Candlestick Matrix directly from df via PIL
+                            ChartTools.generate_candlestick_image(df, screenshot_file, symbol=symbol, timeframe=timeframe)
+
+                        if os.path.exists(screenshot_file):
                             cropped_file = ChartTools.crop_chart_action_area(screenshot_file, focus_ratio=0.70)
                             active_img_path = cropped_file if cropped_file and os.path.exists(cropped_file) else screenshot_file
                         else:
