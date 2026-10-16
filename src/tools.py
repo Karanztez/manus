@@ -53,13 +53,22 @@ class WebTools:
             logger.warning(f"[WEB_SEARCH_WARN] Failed to fetch news: {e}")
             return f"[INFO] Normal market conditions. Unable to fetch online headlines ({e})."
 
+    _macro_cache = {}
+    _macro_cache_time = {}
+
     @staticmethod
     def get_macroeconomic_brief(symbol: str = "GOLD") -> str:
         """
         Global Macroeconomic Intelligence:
         Searches central bank posture, US Dollar Index (DXY), Treasury yields, and inflation trends.
-        Provides high-level macro context directly to the AI Economist Persona.
+        Caches results for 5 minutes to prevent network timeouts during rapid M1 candle evaluation.
         """
+        import time
+        now = time.time()
+        if symbol in WebTools._macro_cache:
+            if now - WebTools._macro_cache_time.get(symbol, 0) < 300:
+                return WebTools._macro_cache[symbol]
+
         queries = [
             f"{symbol} price forecast DXY inflation fed rates",
             "US Dollar 10-year Treasury yield gold impact today"
@@ -71,9 +80,13 @@ class WebTools:
                 briefs.append(res)
 
         if not briefs:
-            return "Macroeconomic Context: DXY and US Treasury Yields are in a balanced equilibrium. Gold spot trades primarily on technical flow."
+            result = "Macroeconomic Context: DXY and US Treasury Yields are in a balanced equilibrium. Gold spot trades primarily on technical flow."
+        else:
+            result = " | ".join(briefs)
 
-        return " | ".join(briefs)
+        WebTools._macro_cache[symbol] = result
+        WebTools._macro_cache_time[symbol] = now
+        return result
 
     @staticmethod
     def detect_high_impact_news(news_text: str) -> tuple:
