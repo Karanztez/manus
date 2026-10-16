@@ -208,7 +208,7 @@ Guidelines:
                     except Exception as e:
                         logger.warning(f"[VISION_WARN] Failed to read chart image {image_path}: {e}")
 
-                models_to_try = [self.model_name, "gemini-2.5-flash", "gemini-1.5-flash"]
+                models_to_try = [self.model_name, "gemini-flash-latest", "gemini-2.5-flash", "gemini-1.5-flash"]
                 last_exc = None
                 response = None
                 for m in models_to_try:
@@ -221,7 +221,12 @@ Guidelines:
                         break
                     except Exception as err:
                         last_exc = err
-                        if "503" in str(err) or "UNAVAILABLE" in str(err):
+                        err_str = str(err)
+                        if "503" in err_str or "UNAVAILABLE" in err_str:
+                            continue
+                        # If specific model exhausted its daily 500 free tier limit, fallback to another model
+                        if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
+                            logger.warning(f"[MODEL_QUOTA_FALLBACK] Model {m} quota exhausted (429). Falling back to next available model...")
                             continue
                         raise err
 

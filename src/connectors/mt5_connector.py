@@ -155,12 +155,18 @@ class MT5Connector:
             return False
         try:
             tf = TIMEFRAME_MAP.get(timeframe_str.upper(), mt5.TIMEFRAME_M1)
-            # Find open charts or open a new one
-            charts = mt5.charts_get(symbol=symbol)
+            # Safe chart window handle
             chart_id = None
-            if charts:
-                chart_id = charts[0]
-            else:
+            if hasattr(mt5, "charts_get"):
+                charts = mt5.charts_get(symbol=symbol)
+                if charts:
+                    chart_id = charts[0]
+            elif hasattr(mt5, "chart_first"):
+                c = mt5.chart_first()
+                if c > 0:
+                    chart_id = c
+            
+            if not chart_id and hasattr(mt5, "chart_open"):
                 chart_id = mt5.chart_open(symbol, tf)
                 time.sleep(0.5)
 
