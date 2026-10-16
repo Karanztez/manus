@@ -169,10 +169,103 @@ class WebTools:
         return " | ".join(summary_events[:6]) if summary_events else ""
 
     @staticmethod
+    def get_upcoming_news_environment_assessment(symbol: str) -> dict:
+        """
+        THE PREDICTIVE NEWS & PRE-EVENT RISK ASSESSOR:
+        Scans all scheduled economic events (Red, Orange, Yellow) that have NOT yet been released.
+        Calculates time countdown, forecast variance, and predicts pre-news positioning environment
+        (e.g., Pre-News Liquidity Squeeze, Consolidation Range, or Front-Running Momentum).
+        """
+        from datetime import datetime, timezone
+        import dateutil.parser
+
+        events = WebTools.get_forexfactory_calendar()
+        if not events:
+            return {"has_upcoming": False, "assessment": "No scheduled releases found."}
+
+        currencies_to_watch = ["USD"]
+        if "EUR" in symbol:
+            currencies_to_watch.append("EUR")
+        if "JPY" in symbol:
+            currencies_to_watch.append("JPY")
+        if "GBP" in symbol:
+            currencies_to_watch.append("GBP")
+
+        now_utc = datetime.now(timezone.utc)
+        upcoming_events = []
+
+        for e in events:
+            country = e.get("country", "")
+            date_str = e.get("date", "")
+            impact = e.get("impact", "").capitalize()
+            actual = e.get("actual", "")
+
+            # Only look at future events or events within next 12 hours that have NO actual number yet
+            if country in currencies_to_watch and date_str and not actual:
+                try:
+                    event_dt = dateutil.parser.isoparse(date_str)
+                    diff_minutes = (event_dt - now_utc).total_seconds() / 60.0
+                    # Focus on events occurring within the next 8 hours (0 to 480 mins)
+                    if 0 < diff_minutes <= 480:
+                        upcoming_events.append({
+                            "title": e.get("title", ""),
+                            "country": country,
+                            "impact": impact,
+                            "forecast": e.get("forecast", "N/A"),
+                            "previous": e.get("previous", "N/A"),
+                            "minutes_left": round(diff_minutes, 1)
+                        })
+                except Exception:
+                    continue
+
+        upcoming_events.sort(key=lambda x: x["minutes_left"])
+
+        if not upcoming_events:
+            return {
+                "has_upcoming": False,
+                "environment_mode": "OPEN_VOLATILITY",
+                "summary": "No high/medium impact news scheduled in the next 8 hours. Clear market environment.",
+                "closest_event": None
+            }
+
+        closest = upcoming_events[0]
+        mins = closest["minutes_left"]
+        impact = closest["impact"].upper()
+
+        if mins <= 60 and impact == "HIGH":
+            mode = "PRE_RED_FOLDER_CAUTION"
+            assessment = (
+                f"ALERT: Red-Folder event [{closest['country']} - {closest['title']}] drops in {mins:.0f} mins! "
+                f"Expect drying liquidity, widening spreads, and potential front-running or false stop hunts. "
+                f"Forecast: {closest['forecast']} vs Previous: {closest['previous']}. Tighten SL or stand aside."
+            )
+        elif mins <= 120 and impact in ["HIGH", "MEDIUM"]:
+            mode = "PRE_EVENT_POSITIONING"
+            assessment = (
+                f"Upcoming [{impact}] event [{closest['country']} - {closest['title']}] in {mins:.0f} mins. "
+                f"Market transitioning into pre-event accumulation. Institutions establishing hedging orders. "
+                f"Forecast: {closest['forecast']} | Previous: {closest['previous']}."
+            )
+        else:
+            mode = "NORMAL_SCHEDULED_AWARENESS"
+            assessment = (
+                f"Scheduled event [{closest['country']} - {closest['title']}] in {mins/60.0:.1f} hours ({mins:.0f} mins). "
+                f"Forecast: {closest['forecast']} vs Previous: {closest['previous']}."
+            )
+
+        return {
+            "has_upcoming": True,
+            "environment_mode": mode,
+            "closest_event": closest,
+            "assessment": assessment,
+            "upcoming_queue": upcoming_events[:4]
+        }
+
+    @staticmethod
     def get_macroeconomic_brief(symbol: str = "GOLD") -> str:
         """
         Global Macroeconomic Intelligence:
-        Combines ForexFactory Economic Calendar (Red, Orange, Yellow) + Web Market Sentiment.
+        Combines Predictive Pre-News Environment Assessment + ForexFactory Calendar + Web Market Sentiment.
         Caches results for 5 minutes to prevent network timeouts during rapid M1 candle evaluation.
         """
         import time
@@ -181,6 +274,7 @@ class WebTools:
             if now - WebTools._macro_cache_time.get(symbol, 0) < 300:
                 return WebTools._macro_cache[symbol]
 
+        upcoming_assessment = WebTools.get_upcoming_news_environment_assessment(symbol)
         ff_context = WebTools.get_forexfactory_daily_sentiment(symbol)
 
         queries = [
@@ -188,6 +282,9 @@ class WebTools:
             "US Dollar 10-year Treasury yield gold impact today"
         ]
         briefs = []
+        if upcoming_assessment.get("has_upcoming"):
+            briefs.append(f"[PREDICTIVE_NEWS_ASSESSOR] {upcoming_assessment['assessment']}")
+
         if ff_context:
             briefs.append(f"ForexFactory Calendar: {ff_context}")
 
