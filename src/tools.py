@@ -55,6 +55,8 @@ class WebTools:
 
     _forexfactory_cache = []
     _forexfactory_cache_time = 0.0
+    _macro_cache = {}
+    _macro_cache_time = {}
 
     @staticmethod
     def get_forexfactory_calendar(currency: str = "USD") -> list:
