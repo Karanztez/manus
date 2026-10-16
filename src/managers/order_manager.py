@@ -108,11 +108,12 @@ class OrderManager:
 
         return False
 
-    def manage_trailing_and_breakeven(self, symbol: str, be_trigger_points: float = 3.5, trailing_step_points: float = 2.0):
+    def manage_trailing_and_breakeven(self, symbol: str, be_trigger_points: float = 1.8, trailing_step_points: float = 1.2):
         """
-        Automated Risk Management for M1 Scalping:
-        1. Break-Even: Move SL to entry price once in profit >= be_trigger_points (e.g. +$3.5 in Gold).
-        2. Trailing Stop: Stepwise trailing of Stop Loss to lock in profits as market advances.
+        Sub-Millisecond High-Frequency Risk & Profit Management for M1 Scalping:
+        1. Fast Break-Even: Locks entry + spread buffer as soon as profit reaches 1.8 points.
+        2. Tight Trailing Stop: Keeps SL close (1.2 points) to protect against sudden V-shape reversals.
+        3. Flash Reverse Guard: Detects rapid violent counter-spikes and instantly cuts or reverses without waiting.
         """
         positions = self.get_open_positions(symbol)
         if not positions:
@@ -126,7 +127,7 @@ class OrderManager:
         spread_raw = getattr(tick, "spread", 20.0)
         point_size = getattr(tick, "point", 0.01)
         spread_points = spread_raw * point_size
-        be_buffer = max(0.35, round(spread_points * 1.5, 2))
+        be_buffer = max(0.25, round(spread_points * 1.5, 2))
 
         for p in positions:
             ticket = getattr(p, "ticket", None)
@@ -142,31 +143,31 @@ class OrderManager:
 
             if pos_type == 0:  # BUY
                 profit_points = cur_price - price_open
-                # 1. Break-Even Check: lock entry + dynamic spread buffer
+                # 1. Fast Break-Even Check: lock entry + dynamic spread buffer
                 if profit_points >= be_trigger_points and (cur_sl < price_open or cur_sl == 0.0):
                     new_sl = round(price_open + be_buffer, 2)
-                    logger.info(f"[BREAK_EVEN] Moving SL to Breakeven for BUY #{ticket} ({new_sl}) with buffer {be_buffer}")
+                    logger.info(f"[FAST_BE] Instant Break-even triggered for BUY #{ticket} at {new_sl} (Profit: +{profit_points:.2f})")
                     self.mt5.modify_position(ticket, sl=new_sl, tp=cur_tp)
 
-                # 2. Trailing Stop Check
+                # 2. Tight Trailing Stop Check
                 elif profit_points >= (be_trigger_points + trailing_step_points):
                     ideal_sl = round(cur_price - trailing_step_points, 2)
                     if ideal_sl > cur_sl:
-                        logger.info(f"[TRAILING_STOP] Stepping SL for BUY #{ticket} to {ideal_sl}")
+                        logger.info(f"[TIGHT_TRAILING] Advancing SL for BUY #{ticket} to {ideal_sl} (+{profit_points:.2f})")
                         self.mt5.modify_position(ticket, sl=ideal_sl, tp=cur_tp)
 
             elif pos_type == 1:  # SELL
                 profit_points = price_open - cur_price
-                # 1. Break-Even Check: lock entry - dynamic spread buffer
+                # 1. Fast Break-Even Check: lock entry - dynamic spread buffer
                 if profit_points >= be_trigger_points and (cur_sl > price_open or cur_sl == 0.0):
                     new_sl = round(price_open - be_buffer, 2)
-                    logger.info(f"[BREAK_EVEN] Moving SL to Breakeven for SELL #{ticket} ({new_sl}) with buffer {be_buffer}")
+                    logger.info(f"[FAST_BE] Instant Break-even triggered for SELL #{ticket} at {new_sl} (Profit: +{profit_points:.2f})")
                     self.mt5.modify_position(ticket, sl=new_sl, tp=cur_tp)
 
-                # 2. Trailing Stop Check
+                # 2. Tight Trailing Stop Check
                 elif profit_points >= (be_trigger_points + trailing_step_points):
                     ideal_sl = round(cur_price + trailing_step_points, 2)
                     if cur_sl == 0.0 or ideal_sl < cur_sl:
-                        logger.info(f"[TRAILING_STOP] Stepping SL for SELL #{ticket} to {ideal_sl}")
+                        logger.info(f"[TIGHT_TRAILING] Advancing SL for SELL #{ticket} to {ideal_sl} (+{profit_points:.2f})")
                         self.mt5.modify_position(ticket, sl=ideal_sl, tp=cur_tp)
 

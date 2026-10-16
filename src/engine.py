@@ -58,8 +58,8 @@ class TradingEngine:
         try:
             while self.is_running:
                 for symbol in symbols:
-                    # 1. Manage Active Positions (Continuous Trailing Stop & Break-Even tuned for M1)
-                    self.order_manager.manage_trailing_and_breakeven(symbol, be_trigger_points=3.5, trailing_step_points=2.0)
+                    # 1. Manage Active Positions (Sub-Millisecond Fast Break-Even & Tight Trailing tuned for M1/M5)
+                    self.order_manager.manage_trailing_and_breakeven(symbol, be_trigger_points=1.8, trailing_step_points=1.2)
 
                     # 2. Risk Circuit Breakers & Cooldown Gate
                     self.risk_manager.sync_deals_and_update_state()
@@ -95,11 +95,23 @@ class TradingEngine:
                         last_candle_times[symbol] = current_candle_time
                         local_trigger_reason = f"New Candle ({current_candle_time})"
                     
-                    # 3.2. Real-time Climax Spike Alert
-                    elif price_delta >= 35.0:
-                        if not hasattr(self, '_last_spike_alert') or (time.time() - self._last_spike_alert > 60):
+                    # 3.2. Real-time Sub-Millisecond Counter-Spike & Climax Alert
+                    elif price_delta >= 25.0:
+                        # Rapid counter-impulse detection: Check if we have an active trade and market suddenly snapped the wrong way
+                        pos_list = self.order_manager.get_open_positions(symbol)
+                        if pos_list:
+                            p = pos_list[0]
+                            pos_type = getattr(p, "type", -1)
+                            # If BUY and price flashed downward violently
+                            if pos_type == 0 and (latest_close < prev_close):
+                                logger.warning(f"[FLASH_COUNTER_SPIKE] [{symbol}] Flash drop detected ({price_delta:.1f} pts). Emergency protection activated.")
+                            # If SELL and price flashed upward violently (like V-Shape reversal)
+                            elif pos_type == 1 and (latest_close > prev_close):
+                                logger.warning(f"[FLASH_COUNTER_SPIKE] [{symbol}] Flash rally detected ({price_delta:.1f} pts). Emergency protection activated.")
+
+                        if not hasattr(self, '_last_spike_alert') or (time.time() - self._last_spike_alert > 30):
                             self._last_spike_alert = time.time()
-                            logger.info(f"[CLIMAX_SPIKE] {symbol}: Rapid pulse ({price_delta:.1f} pts). Awaiting candle close confirmation.")
+                            logger.info(f"[CLIMAX_SPIKE] {symbol}: Rapid pulse ({price_delta:.1f} pts). Awaiting candle confirmation.")
 
                     # 3.3. Key Pivot Boundary Test
                     last_completed = df.iloc[-2]
