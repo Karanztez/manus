@@ -228,16 +228,30 @@ class MT5Connector:
             return False
 
         action_type = action.upper()
+        # Broker minimum stops level (stops_level points converted to price distance)
+        stops_level = getattr(info, "stops_level", 0)
+        point_size = getattr(info, "point", 0.01)
+        spread_raw = getattr(info, "spread", 0.0)
+        min_stop_distance = max(stops_level * point_size, spread_raw * point_size, point_size * 5)
+
+        # For Crypto like BTCUSD, minimum stop distance must be at least 150-300 points
+        is_crypto = any(c in symbol.upper() for c in ["BTC", "ETH", "SOL", "XRP"])
+        if is_crypto:
+            min_stop_distance = max(min_stop_distance, 150.0)
+
+        effective_sl_points = max(sl_points, min_stop_distance) if sl_points > 0 else 0.0
+        effective_tp_points = max(tp_points, min_stop_distance * 1.5) if tp_points > 0 else 0.0
+
         if action_type == "BUY":
             order_type = mt5.ORDER_TYPE_BUY
             price = tick.ask
-            sl = price - sl_points if sl_points > 0 else 0.0
-            tp = price + tp_points if tp_points > 0 else 0.0
+            sl = price - effective_sl_points if effective_sl_points > 0 else 0.0
+            tp = price + effective_tp_points if effective_tp_points > 0 else 0.0
         elif action_type == "SELL":
             order_type = mt5.ORDER_TYPE_SELL
             price = tick.bid
-            sl = price + sl_points if sl_points > 0 else 0.0
-            tp = price - tp_points if tp_points > 0 else 0.0
+            sl = price + effective_sl_points if effective_sl_points > 0 else 0.0
+            tp = price - effective_tp_points if effective_tp_points > 0 else 0.0
         else:
             logger.warning(f"Unsupported action: {action}")
             return False
@@ -250,7 +264,7 @@ class MT5Connector:
             "price": price,
             "sl": round(sl, info.digits) if sl > 0 else 0.0,
             "tp": round(tp, info.digits) if tp > 0 else 0.0,
-            "deviation": 20,
+            "deviation": 50,
             "magic": self.magic_number,
             "comment": comment,
             "type_time": mt5.ORDER_TIME_GTC,
